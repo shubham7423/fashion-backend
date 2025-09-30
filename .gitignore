@@ -41,8 +41,14 @@ Thumbs.db
 # Saved images from processing
 saved_images/
 
+# User-specific data directories
+user_data/
+
 # Image attributes JSON file
 image_attributes.json
+
+# User-specific JSON files
+*_image_attributes.json
 
 # Logs
 *.log

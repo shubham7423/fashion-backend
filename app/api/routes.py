@@ -14,17 +14,19 @@ async def health_check():
 
 
 @router.post("/attribute_clothes", response_model=AttributeAnalysisResponse)
-async def attribute_clothes(files: List[UploadFile] = File(...)):
+async def attribute_clothes(user_id: str, files: List[UploadFile] = File(...)):
     """
     Process uploaded image files for clothing attribute analysis
 
     This endpoint receives one or more image files and processes them to extract
-    clothing attributes. Images are not stored permanently.
+    clothing attributes. Images are stored per user and attributes are saved
+    to user-specific JSON files.
 
     Args:
+        user_id: Unique identifier for the user (required)
         files: List of image files to be processed
 
     Returns:
         JSON response with analysis results for all images
     """
-    return await ClothingAttributionService.process_images_for_attributes(files)
+    return await ClothingAttributionService.process_images_for_attributes(files, user_id)

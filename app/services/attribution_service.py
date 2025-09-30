@@ -115,15 +115,24 @@ class ClothingAttributionService:
         return resized_image, processing_info
 
     @staticmethod
-    def ensure_images_directory() -> Path:
+    def ensure_images_directory(user_id: str = None) -> Path:
         """
         Ensure the images directory exists and return its path
+        
+        Args:
+            user_id: Optional user ID for user-specific directories
         
         Returns:
             Path object of the images directory
         """
-        images_dir = Path(settings.IMAGES_DIRECTORY)
-        images_dir.mkdir(exist_ok=True)
+        if user_id and settings.CREATE_USER_SUBDIRS:
+            # Create user-specific directory structure
+            base_dir = Path(settings.USER_DATA_DIRECTORY) / user_id
+            images_dir = base_dir / settings.IMAGES_DIRECTORY
+        else:
+            images_dir = Path(settings.IMAGES_DIRECTORY)
+            
+        images_dir.mkdir(parents=True, exist_ok=True)
         
         # Create subdirectory for processed images only
         if settings.SAVE_PROCESSED:
@@ -161,13 +170,14 @@ class ClothingAttributionService:
         return unique_filename
 
     @staticmethod
-    def save_processed_image(image: Image.Image, unique_filename: str) -> str:
+    def save_processed_image(image: Image.Image, unique_filename: str, user_id: str = None) -> str:
         """
         Save the processed/compressed image
         
         Args:
             image: Processed PIL Image object
             unique_filename: Unique filename to save with
+            user_id: Optional user ID for user-specific storage
             
         Returns:
             Path where the processed image was saved
@@ -175,7 +185,7 @@ class ClothingAttributionService:
         if not settings.SAVE_IMAGES or not settings.SAVE_PROCESSED:
             return None
             
-        images_dir = ClothingAttributionService.ensure_images_directory()
+        images_dir = ClothingAttributionService.ensure_images_directory(user_id)
         processed_dir = images_dir / "processed"
         
         # Change extension to .jpg for processed images (since we compress them)
@@ -194,6 +204,34 @@ class ClothingAttributionService:
         return str(file_path)
 
     @staticmethod
+    def get_user_json_file_path(user_id: str) -> Path:
+        """
+        Get the path to the user-specific JSON file
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            Path to the user's JSON file
+        """
+        if settings.CREATE_USER_SUBDIRS:
+            user_dir = Path(settings.USER_DATA_DIRECTORY) / user_id
+            user_dir.mkdir(parents=True, exist_ok=True)
+            return user_dir / settings.ATTRIBUTES_JSON_FILE
+        else:
+            # Fallback to user-prefixed filename in root directory
+            filename = f"{user_id}_{settings.ATTRIBUTES_JSON_FILE}"
+            return Path(filename)
+        """
+        Calculate SHA-256 hash of image data for duplicate detection
+        
+        Args:
+            image_data: Raw image bytes
+            
+        Returns:
+            SHA-256 hash string
+        """
+    @staticmethod
     def calculate_image_hash(image_data: bytes) -> str:
         """
         Calculate SHA-256 hash of image data for duplicate detection
@@ -207,14 +245,17 @@ class ClothingAttributionService:
         return hashlib.sha256(image_data).hexdigest()
 
     @staticmethod
-    def load_existing_attributes() -> Dict[str, Any]:
+    def load_existing_attributes(user_id: str) -> Dict[str, Any]:
         """
-        Load existing attributes from JSON file
+        Load existing attributes from user-specific JSON file
+        
+        Args:
+            user_id: User identifier
         
         Returns:
             Dictionary containing existing attributes or empty dict if file doesn't exist
         """
-        json_file_path = Path(settings.ATTRIBUTES_JSON_FILE)
+        json_file_path = ClothingAttributionService.get_user_json_file_path(user_id)
         
         if json_file_path.exists():
             try:
@@ -222,26 +263,27 @@ class ClothingAttributionService:
                     return json.load(f)
             except (json.JSONDecodeError, IOError):
                 # If file is corrupted or unreadable, return empty structure
-                return {"images": {}, "metadata": {"total_images": 0, "last_updated": None}}
+                return {"images": {}, "metadata": {"total_images": 0, "last_updated": None, "user_id": user_id}}
         
-        return {"images": {}, "metadata": {"total_images": 0, "last_updated": None}}
+        return {"images": {}, "metadata": {"total_images": 0, "last_updated": None, "user_id": user_id}}
 
     @staticmethod
-    def save_attributes_to_json(image_hash: str, attributes: Dict[str, Any], image_info: ImageInfo, saved_paths: Dict[str, str] = None):
+    def save_attributes_to_json(image_hash: str, attributes: Dict[str, Any], image_info: ImageInfo, user_id: str, saved_paths: Dict[str, str] = None):
         """
-        Save image attributes to JSON file
+        Save image attributes to user-specific JSON file
         
         Args:
             image_hash: Unique hash of the image
             attributes: Extracted attributes from the image
             image_info: Image metadata
+            user_id: User identifier
             saved_paths: Dictionary of saved file paths
         """
         if not settings.SAVE_ATTRIBUTES_JSON:
             return
             
-        # Load existing data
-        data = ClothingAttributionService.load_existing_attributes()
+        # Load existing data for this user
+        data = ClothingAttributionService.load_existing_attributes(user_id)
         
         # Create new entry
         entry = {
@@ -251,7 +293,8 @@ class ClothingAttributionService:
             "file_size_mb": image_info.file_size_mb,
             "attributes": attributes,
             "processed_timestamp": datetime.now().isoformat(),
-            "image_hash": image_hash
+            "image_hash": image_hash,
+            "user_id": user_id
         }
         
         # Add saved paths if available
@@ -264,22 +307,24 @@ class ClothingAttributionService:
         # Update metadata
         data["metadata"]["total_images"] = len(data["images"])
         data["metadata"]["last_updated"] = datetime.now().isoformat()
+        data["metadata"]["user_id"] = user_id
         
-        # Save back to file
-        json_file_path = Path(settings.ATTRIBUTES_JSON_FILE)
+        # Save back to user-specific file
+        json_file_path = ClothingAttributionService.get_user_json_file_path(user_id)
         try:
             with open(json_file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except IOError as e:
-            print(f"Warning: Could not save attributes to JSON file: {e}")
+            print(f"Warning: Could not save attributes to JSON file for user {user_id}: {e}")
 
     @staticmethod
-    def is_duplicate_image(image_hash: str) -> Tuple[bool, Dict[str, Any]]:
+    def is_duplicate_image(image_hash: str, user_id: str) -> Tuple[bool, Dict[str, Any]]:
         """
-        Check if image is a duplicate based on its hash
+        Check if image is a duplicate based on its hash for a specific user
         
         Args:
             image_hash: SHA-256 hash of the image
+            user_id: User identifier
             
         Returns:
             Tuple of (is_duplicate, existing_data)
@@ -287,7 +332,7 @@ class ClothingAttributionService:
         if not settings.AVOID_DUPLICATES:
             return False, {}
             
-        existing_data = ClothingAttributionService.load_existing_attributes()
+        existing_data = ClothingAttributionService.load_existing_attributes(user_id)
         
         if image_hash in existing_data.get("images", {}):
             return True, existing_data["images"][image_hash]
@@ -297,14 +342,16 @@ class ClothingAttributionService:
     @staticmethod
     async def process_images_for_attributes(
         files: List[UploadFile],
+        user_id: str,
     ) -> AttributeAnalysisResponse:
         """
-        Process images for clothing attribute analysis
+        Process images for clothing attribute analysis for a specific user
         
         This method processes image files and returns analysis results for all images.
         
         Args:
             files: List of image files to be processed
+            user_id: User identifier for user-specific storage
             
         Returns:
             AttributeAnalysisResponse with results for all images
@@ -314,6 +361,15 @@ class ClothingAttributionService:
                 status_code=400,
                 detail="No files provided"
             )
+        
+        if not user_id or not user_id.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="User ID is required"
+            )
+        
+        # Sanitize user_id to prevent directory traversal attacks
+        user_id = user_id.strip().replace("/", "_").replace("\\", "_").replace("..", "_")
         
         # Limit the number of files to prevent abuse
         max_files = 10  # You can make this configurable
@@ -330,7 +386,7 @@ class ClothingAttributionService:
         # Process each image
         for file in files:
             try:
-                result = await ClothingAttributionService.process_single_image_analysis(file)
+                result = await ClothingAttributionService.process_single_image_analysis(file, user_id)
                 results.append(result)
                 if result.error is None:
                     successful_analyses += 1
@@ -363,11 +419,11 @@ class ClothingAttributionService:
         overall_success = successful_analyses > 0
         
         if successful_analyses == len(files):
-            message = f"All {len(files)} images processed successfully"
+            message = f"All {len(files)} images processed successfully for user {user_id}"
         elif successful_analyses > 0:
-            message = f"{successful_analyses} of {len(files)} images processed successfully"
+            message = f"{successful_analyses} of {len(files)} images processed successfully for user {user_id}"
         else:
-            message = f"Failed to process all {len(files)} images"
+            message = f"Failed to process all {len(files)} images for user {user_id}"
         
         return AttributeAnalysisResponse(
             success=overall_success,
@@ -380,12 +436,13 @@ class ClothingAttributionService:
         )
 
     @staticmethod
-    async def process_single_image_analysis(file: UploadFile) -> ImageAnalysisResult:
+    async def process_single_image_analysis(file: UploadFile, user_id: str) -> ImageAnalysisResult:
         """
-        Process a single image and return ImageAnalysisResult
+        Process a single image and return ImageAnalysisResult for a specific user
         
         Args:
             file: Image file to process
+            user_id: User identifier for user-specific storage
             
         Returns:
             ImageAnalysisResult with analysis data or error
@@ -407,8 +464,8 @@ class ClothingAttributionService:
             image_data = await file.read()
             image_hash = ClothingAttributionService.calculate_image_hash(image_data)
 
-            # Check for duplicates
-            is_duplicate, existing_data = ClothingAttributionService.is_duplicate_image(image_hash)
+            # Check for duplicates for this specific user
+            is_duplicate, existing_data = ClothingAttributionService.is_duplicate_image(image_hash, user_id)
             
             if is_duplicate:
                 # Return existing attributes for duplicate image
@@ -420,7 +477,8 @@ class ClothingAttributionService:
                         "duplicate_info": {
                             "original_filename": existing_data.get("filename"),
                             "original_processed_timestamp": existing_data.get("processed_timestamp"),
-                            "is_duplicate": True
+                            "is_duplicate": True,
+                            "user_id": user_id
                         }
                     },
                     error=None
@@ -430,16 +488,16 @@ class ClothingAttributionService:
             pil_image = Image.open(io.BytesIO(image_data))
 
             # Generate unique filename for saving
-            unique_filename = ClothingAttributionService.generate_unique_filename(file.filename)
+            unique_filename = ClothingAttributionService.generate_unique_filename(file.filename, user_id)
 
             # Compress and resize the image for optimal clothing recognition
             processed_image, processing_info = (
                 ClothingAttributionService.compress_and_resize_image(pil_image)
             )
 
-            # Save processed image if enabled
+            # Save processed image if enabled (user-specific)
             if settings.SAVE_IMAGES and settings.SAVE_PROCESSED:
-                processed_path = ClothingAttributionService.save_processed_image(processed_image, unique_filename)
+                processed_path = ClothingAttributionService.save_processed_image(processed_image, unique_filename, user_id)
                 saved_paths["processed"] = processed_path
 
             # Extract clothing attributes using Gemini
@@ -454,10 +512,11 @@ class ClothingAttributionService:
             # Add processing information
             attributes["processing_info"] = processing_info
             attributes["image_hash"] = image_hash
+            attributes["user_id"] = user_id
 
-            # Save attributes to JSON file for first-time images
+            # Save attributes to user-specific JSON file for first-time images
             ClothingAttributionService.save_attributes_to_json(
-                image_hash, attributes, image_info, saved_paths
+                image_hash, attributes, image_info, user_id, saved_paths
             )
 
             # Reset file pointer
