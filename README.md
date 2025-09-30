@@ -20,7 +20,7 @@ fashion-backend/
 │   │   └── response.py           # Response models
 │   └── services/                 # Business logic
 │       ├── __init__.py
-│       └── image_service.py      # Image processing service
+│       └── attribution_service.py      # Image processing service
 ├── venv/                         # Virtual environment
 ├── main.py                       # Application entry point
 ├── requirements.txt              # Python dependencies
@@ -171,7 +171,7 @@ fashion-backend/
 │   │   └── response.py           # Response models
 │   └── services/                 # Business logic
 │       ├── __init__.py
-│       └── image_service.py      # Image processing service
+│       └── attribution_service.py      # Image processing service
 ├── venv/                         # Virtual environment
 ├── main.py                       # Application entry point
 ├── requirements.txt              # Python dependencies

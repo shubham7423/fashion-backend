@@ -1,5 +1,5 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
-from app.services.image_service import ImageProcessingService
+from app.services.attribution_service import ImageProcessingService
 from app.models.response import AttributeAnalysisResponse, HealthResponse
 from datetime import datetime
 
