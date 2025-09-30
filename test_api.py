@@ -10,10 +10,9 @@ import tempfile
 from PIL import Image
 
 
-def create_test_image():
-    """Create a simple test image"""
-    # Create a simple red square image
-    img = Image.new("RGB", (100, 100), color="red")
+def create_test_image(color="red", size=(100, 100)):
+    """Create a simple test image with specified color"""
+    img = Image.new("RGB", size, color=color)
 
     # Save to temporary file
     temp_file = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
@@ -48,28 +47,47 @@ def test_api():
 
     # Test image processing endpoint
     print("\n3. Testing image processing endpoint...")
-    test_image_path = create_test_image()
+    test_image_paths = [
+        create_test_image("red", (150, 150)),
+        create_test_image("blue", (200, 100)),
+        create_test_image("green", (100, 200))
+    ]
 
     try:
-        with open(test_image_path, "rb") as f:
-            files = {"file": ("test_image.jpg", f, "image/jpeg")}
-            response = requests.post(
-                f"{base_url}/api/v1/attribute_clothes", files=files
-            )
+        files = []
+        file_objects = []
+        
+        # Open all files
+        for i, path in enumerate(test_image_paths):
+            f = open(path, "rb")
+            file_objects.append(f)
+            files.append(("files", (f"test_image_{i+1}.jpg", f, "image/jpeg")))
+
+        response = requests.post(
+            f"{base_url}/api/v1/attribute_clothes", files=files
+        )
 
         print(f"Status: {response.status_code}")
         if response.status_code == 200:
-            print("✅ Image processed successfully!")
-            print(f"Response: {json.dumps(response.json(), indent=2)}")
+            print("✅ Images processed successfully!")
+            result = response.json()
+            print(f"Total images: {result.get('total_images', 0)}")
+            print(f"Successful analyses: {result.get('successful_analyses', 0)}")
+            print(f"Failed analyses: {result.get('failed_analyses', 0)}")
+            print(f"Response: {json.dumps(result, indent=2)}")
         else:
-            print(f"❌ Processing failed: {response.text}")
+            print(f"❌ Image processing failed: {response.text}")
 
     except Exception as e:
-        print(f"❌ Error during processing: {e}")
+        print(f"❌ Error during image processing: {e}")
 
     finally:
-        # Clean up test image
-        Path(test_image_path).unlink(missing_ok=True)
+        # Close all file objects
+        for f in file_objects:
+            f.close()
+        # Clean up test images
+        for path in test_image_paths:
+            Path(path).unlink(missing_ok=True)
 
     print("\n" + "=" * 40)
     print("Testing complete!")

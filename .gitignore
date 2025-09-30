@@ -38,6 +38,12 @@ Thumbs.db
 # Uploaded files (optional - uncomment if you don't want to track uploaded images)
 # uploaded_images/
 
+# Saved images from processing
+saved_images/
+
+# Image attributes JSON file
+image_attributes.json
+
 # Logs
 *.log
 

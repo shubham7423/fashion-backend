@@ -65,14 +65,15 @@ The API will be available at:
 ## API Endpoints
 
 ### POST /api/v1/attribute_clothes
-Process uploaded image files for clothing attribute analysis. The image is automatically compressed and resized to optimal dimensions (512x512) while maintaining aspect ratio for efficient clothing recognition. Images are processed in memory and not stored permanently.
+Process uploaded image files for clothing attribute analysis. The image is automatically compressed and resized to optimal dimensions (512x512) while maintaining aspect ratio for efficient clothing recognition. Original images are processed in memory and only the compressed/processed versions are saved.
 
 **Image Processing Features:**
 - **Automatic compression**: Images are resized to 512x512 pixels (maintaining aspect ratio)
 - **High-quality resampling**: Uses LANCZOS algorithm for optimal quality
 - **Format optimization**: JPEG quality set to 85% for balanced size/quality
 - **Orientation correction**: Automatically fixes image rotation based on EXIF data
-- **Memory efficiency**: Processing done in-memory without file storage
+- **Smart storage**: Only processed/compressed images are saved, originals are discarded
+- **Memory efficiency**: Original images processed in-memory without permanent storage
 
 **Parameters:**
 - `file`: Image file (multipart/form-data)
@@ -135,7 +136,7 @@ print(response.json())
 - **Automatic compression and resizing**: Images are optimized to 512x512 pixels for efficient processing
 - **Aspect ratio preservation**: Original proportions are maintained during resizing
 - **High-quality processing**: Uses LANCZOS resampling for superior image quality
-- **Memory-only processing**: Images are processed in memory without permanent storage
+- **Smart storage**: Only processed/compressed images are saved, originals are discarded after processing
 - **Format validation**: Each image is validated for type and size before processing
 - **EXIF orientation handling**: Automatically corrects image rotation
 - **Optimal for clothing recognition**: Resolution balanced for material and texture identification

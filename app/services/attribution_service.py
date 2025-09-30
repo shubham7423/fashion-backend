@@ -1,14 +1,20 @@
 from fastapi import UploadFile, HTTPException
 from pathlib import Path
 from app.core.config import settings
-from app.models.response import ImageInfo, AttributeAnalysisResponse
+from app.models.response import ImageInfo, AttributeAnalysisResponse, ImageAnalysisResult
+from app.services.attribution.gemini_attributor import GeminiAttributor
 from datetime import datetime
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, List
 import io
+import asyncio
+import uuid
+import os
+import json
+import hashlib
 from PIL import Image, ImageOps
 
 
-class ImageProcessingService:
+class ClothingAttributionService:
     """Service for processing and analyzing clothing images"""
 
     @staticmethod
@@ -109,124 +115,431 @@ class ImageProcessingService:
         return resized_image, processing_info
 
     @staticmethod
-    async def process_image_for_attributes(
-        file: UploadFile,
-    ) -> AttributeAnalysisResponse:
+    def ensure_images_directory() -> Path:
         """
-        Process image for clothing attribute analysis
-
-        This method receives the image file and prepares it for processing.
-        Currently returns basic file information. In the future, this is where
-        you would add your ML model or image processing logic.
+        Ensure the images directory exists and return its path
+        
+        Returns:
+            Path object of the images directory
         """
-        try:
-            # Validate file type
-            if not ImageProcessingService.validate_image_file(file):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid file type. Allowed extensions: {', '.join(settings.ALLOWED_EXTENSIONS)}",
-                )
-
-            # Validate file size
-            file_size = await ImageProcessingService.validate_file_size(file)
-
-            # Create image info
-            image_info = ImageProcessingService.create_image_info(file, file_size)
-
-            # Here you can add your image processing logic
-            # For example:
-            # - Load the image using PIL
-            # - Run it through your ML model
-            # - Extract clothing attributes
-            # - Return the analysis results
-
-            # Example of loading the image (for future processing)
-            image_data = await file.read()
-
-            # Load and process the image
-            try:
-                pil_image = Image.open(io.BytesIO(image_data))
-
-                # Compress and resize the image for optimal clothing recognition
-                processed_image, processing_info = (
-                    ImageProcessingService.compress_and_resize_image(pil_image)
-                )
-
-                # Here you can add your ML model processing
-                # The processed_image is now optimized for clothing recognition
-                # attributes = your_ml_model.analyze(processed_image)
-
-                # Example: Save processed image info for debugging (optional)
-                print(f"Image processed: {processing_info}")
-
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid image format: {str(e)}"
-                )
-
-            # Reset file pointer if needed for further processing
-            await file.seek(0)
-
-            # Return response with placeholder for attributes
-            return AttributeAnalysisResponse(
-                success=True,
-                message="Image processed, compressed, and ready for attribute analysis",
-                image_info=image_info,
-                processing_timestamp=datetime.now().isoformat(),
-                status="processed_and_ready",
-                attributes=None,  # This will contain your ML model results
-            )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Error processing image: {str(e)}"
-            )
-        finally:
-            await file.close()
+        images_dir = Path(settings.IMAGES_DIRECTORY)
+        images_dir.mkdir(exist_ok=True)
+        
+        # Create subdirectory for processed images only
+        if settings.SAVE_PROCESSED:
+            (images_dir / "processed").mkdir(exist_ok=True)
+            
+        return images_dir
 
     @staticmethod
-    def extract_clothing_attributes(image: Image.Image) -> Dict[str, Any]:
+    def generate_unique_filename(original_filename: str, prefix: str = "") -> str:
         """
-        Extract clothing attributes from the processed image
+        Generate a unique filename to prevent conflicts
+        
+        Args:
+            original_filename: Original uploaded filename
+            prefix: Optional prefix for the filename
+            
+        Returns:
+            Unique filename with timestamp and UUID
+        """
+        # Get file extension
+        file_path = Path(original_filename)
+        extension = file_path.suffix.lower()
+        name_without_ext = file_path.stem
+        
+        # Generate timestamp and unique ID
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        
+        # Construct unique filename
+        if prefix:
+            unique_filename = f"{timestamp}_{prefix}_{name_without_ext}_{unique_id}{extension}"
+        else:
+            unique_filename = f"{timestamp}_{name_without_ext}_{unique_id}{extension}"
+            
+        return unique_filename
 
-        This is a placeholder method where you would implement your
-        machine learning model or image processing logic.
+    @staticmethod
+    def save_processed_image(image: Image.Image, unique_filename: str) -> str:
+        """
+        Save the processed/compressed image
+        
+        Args:
+            image: Processed PIL Image object
+            unique_filename: Unique filename to save with
+            
+        Returns:
+            Path where the processed image was saved
+        """
+        if not settings.SAVE_IMAGES or not settings.SAVE_PROCESSED:
+            return None
+            
+        images_dir = ClothingAttributionService.ensure_images_directory()
+        processed_dir = images_dir / "processed"
+        
+        # Change extension to .jpg for processed images (since we compress them)
+        file_path = Path(unique_filename)
+        processed_filename = f"{file_path.stem}_processed.jpg"
+        file_path = processed_dir / processed_filename
+        
+        # Save the processed image with optimal settings
+        image.save(
+            file_path,
+            format="JPEG",
+            quality=settings.JPEG_QUALITY,
+            optimize=True
+        )
+        
+        return str(file_path)
+
+    @staticmethod
+    def calculate_image_hash(image_data: bytes) -> str:
+        """
+        Calculate SHA-256 hash of image data for duplicate detection
+        
+        Args:
+            image_data: Raw image bytes
+            
+        Returns:
+            SHA-256 hash string
+        """
+        return hashlib.sha256(image_data).hexdigest()
+
+    @staticmethod
+    def load_existing_attributes() -> Dict[str, Any]:
+        """
+        Load existing attributes from JSON file
+        
+        Returns:
+            Dictionary containing existing attributes or empty dict if file doesn't exist
+        """
+        json_file_path = Path(settings.ATTRIBUTES_JSON_FILE)
+        
+        if json_file_path.exists():
+            try:
+                with open(json_file_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                # If file is corrupted or unreadable, return empty structure
+                return {"images": {}, "metadata": {"total_images": 0, "last_updated": None}}
+        
+        return {"images": {}, "metadata": {"total_images": 0, "last_updated": None}}
+
+    @staticmethod
+    def save_attributes_to_json(image_hash: str, attributes: Dict[str, Any], image_info: ImageInfo, saved_paths: Dict[str, str] = None):
+        """
+        Save image attributes to JSON file
+        
+        Args:
+            image_hash: Unique hash of the image
+            attributes: Extracted attributes from the image
+            image_info: Image metadata
+            saved_paths: Dictionary of saved file paths
+        """
+        if not settings.SAVE_ATTRIBUTES_JSON:
+            return
+            
+        # Load existing data
+        data = ClothingAttributionService.load_existing_attributes()
+        
+        # Create new entry
+        entry = {
+            "filename": image_info.filename,
+            "content_type": image_info.content_type,
+            "file_size_bytes": image_info.file_size_bytes,
+            "file_size_mb": image_info.file_size_mb,
+            "attributes": attributes,
+            "processed_timestamp": datetime.now().isoformat(),
+            "image_hash": image_hash
+        }
+        
+        # Add saved paths if available
+        if saved_paths:
+            entry["saved_paths"] = saved_paths
+            
+        # Add to images dictionary using hash as key
+        data["images"][image_hash] = entry
+        
+        # Update metadata
+        data["metadata"]["total_images"] = len(data["images"])
+        data["metadata"]["last_updated"] = datetime.now().isoformat()
+        
+        # Save back to file
+        json_file_path = Path(settings.ATTRIBUTES_JSON_FILE)
+        try:
+            with open(json_file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except IOError as e:
+            print(f"Warning: Could not save attributes to JSON file: {e}")
+
+    @staticmethod
+    def is_duplicate_image(image_hash: str) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Check if image is a duplicate based on its hash
+        
+        Args:
+            image_hash: SHA-256 hash of the image
+            
+        Returns:
+            Tuple of (is_duplicate, existing_data)
+        """
+        if not settings.AVOID_DUPLICATES:
+            return False, {}
+            
+        existing_data = ClothingAttributionService.load_existing_attributes()
+        
+        if image_hash in existing_data.get("images", {}):
+            return True, existing_data["images"][image_hash]
+        
+        return False, {}
+
+    @staticmethod
+    async def process_images_for_attributes(
+        files: List[UploadFile],
+    ) -> AttributeAnalysisResponse:
+        """
+        Process images for clothing attribute analysis
+        
+        This method processes image files and returns analysis results for all images.
+        
+        Args:
+            files: List of image files to be processed
+            
+        Returns:
+            AttributeAnalysisResponse with results for all images
+        """
+        if not files:
+            raise HTTPException(
+                status_code=400,
+                detail="No files provided"
+            )
+        
+        # Limit the number of files to prevent abuse
+        max_files = 10  # You can make this configurable
+        if len(files) > max_files:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files. Maximum allowed: {max_files}"
+            )
+        
+        results = []
+        successful_analyses = 0
+        failed_analyses = 0
+        
+        # Process each image
+        for file in files:
+            try:
+                result = await ClothingAttributionService.process_single_image_analysis(file)
+                results.append(result)
+                if result.error is None:
+                    successful_analyses += 1
+                else:
+                    failed_analyses += 1
+            except Exception as e:
+                # Create error result for this image
+                try:
+                    file_size = await ClothingAttributionService.validate_file_size(file)
+                    image_info = ClothingAttributionService.create_image_info(file, file_size)
+                except:
+                    # If we can't even get file info, create a minimal one
+                    image_info = ImageInfo(
+                        filename=file.filename or "unknown",
+                        content_type=file.content_type or "unknown",
+                        file_size_bytes=0,
+                        file_size_mb=0.0
+                    )
+                
+                error_result = ImageAnalysisResult(
+                    image_info=image_info,
+                    status="error",
+                    attributes=None,
+                    error=str(e)
+                )
+                results.append(error_result)
+                failed_analyses += 1
+        
+        # Determine overall success
+        overall_success = successful_analyses > 0
+        
+        if successful_analyses == len(files):
+            message = f"All {len(files)} images processed successfully"
+        elif successful_analyses > 0:
+            message = f"{successful_analyses} of {len(files)} images processed successfully"
+        else:
+            message = f"Failed to process all {len(files)} images"
+        
+        return AttributeAnalysisResponse(
+            success=overall_success,
+            message=message,
+            processing_timestamp=datetime.now().isoformat(),
+            total_images=len(files),
+            successful_analyses=successful_analyses,
+            failed_analyses=failed_analyses,
+            results=results
+        )
+
+    @staticmethod
+    async def process_single_image_analysis(file: UploadFile) -> ImageAnalysisResult:
+        """
+        Process a single image and return ImageAnalysisResult
+        
+        Args:
+            file: Image file to process
+            
+        Returns:
+            ImageAnalysisResult with analysis data or error
+        """
+        saved_paths = {}
+        
+        try:
+            # Validate file type
+            if not ClothingAttributionService.validate_image_file(file):
+                raise ValueError(f"Invalid file type. Allowed extensions: {', '.join(settings.ALLOWED_EXTENSIONS)}")
+
+            # Validate file size
+            file_size = await ClothingAttributionService.validate_file_size(file)
+
+            # Create image info
+            image_info = ClothingAttributionService.create_image_info(file, file_size)
+
+            # Load and calculate hash for duplicate detection
+            image_data = await file.read()
+            image_hash = ClothingAttributionService.calculate_image_hash(image_data)
+
+            # Check for duplicates
+            is_duplicate, existing_data = ClothingAttributionService.is_duplicate_image(image_hash)
+            
+            if is_duplicate:
+                # Return existing attributes for duplicate image
+                return ImageAnalysisResult(
+                    image_info=image_info,
+                    status="duplicate_found",
+                    attributes={
+                        **existing_data.get("attributes", {}),
+                        "duplicate_info": {
+                            "original_filename": existing_data.get("filename"),
+                            "original_processed_timestamp": existing_data.get("processed_timestamp"),
+                            "is_duplicate": True
+                        }
+                    },
+                    error=None
+                )
+
+            # Process new image
+            pil_image = Image.open(io.BytesIO(image_data))
+
+            # Generate unique filename for saving
+            unique_filename = ClothingAttributionService.generate_unique_filename(file.filename)
+
+            # Compress and resize the image for optimal clothing recognition
+            processed_image, processing_info = (
+                ClothingAttributionService.compress_and_resize_image(pil_image)
+            )
+
+            # Save processed image if enabled
+            if settings.SAVE_IMAGES and settings.SAVE_PROCESSED:
+                processed_path = ClothingAttributionService.save_processed_image(processed_image, unique_filename)
+                saved_paths["processed"] = processed_path
+
+            # Extract clothing attributes using Gemini
+            attributes = ClothingAttributionService.extract_clothing_attributes(
+                processed_image, file.filename
+            )
+
+            # Add saved paths to attributes if images were saved
+            if saved_paths:
+                attributes["saved_images"] = saved_paths
+
+            # Add processing information
+            attributes["processing_info"] = processing_info
+            attributes["image_hash"] = image_hash
+
+            # Save attributes to JSON file for first-time images
+            ClothingAttributionService.save_attributes_to_json(
+                image_hash, attributes, image_info, saved_paths
+            )
+
+            # Reset file pointer
+            await file.seek(0)
+
+            return ImageAnalysisResult(
+                image_info=image_info,
+                status="attributes_extracted",
+                attributes=attributes,
+                error=None
+            )
+
+        except Exception as e:
+            # Try to get image info for error case
+            try:
+                if file.filename:
+                    file_size = await ClothingAttributionService.validate_file_size(file)
+                    image_info = ClothingAttributionService.create_image_info(file, file_size)
+                else:
+                    raise ValueError("No filename")
+            except:
+                # Create minimal image info for error case
+                image_info = ImageInfo(
+                    filename=file.filename or "unknown",
+                    content_type=file.content_type or "unknown",
+                    file_size_bytes=0,
+                    file_size_mb=0.0
+                )
+
+            return ImageAnalysisResult(
+                image_info=image_info,
+                status="error",
+                attributes=None,
+                error=str(e)
+            )
+        finally:
+            try:
+                await file.close()
+            except:
+                pass
+
+    @staticmethod
+    def extract_clothing_attributes(image: Image.Image, image_filename: str = None) -> Dict[str, Any]:
+        """
+        Extract clothing attributes from the processed image using Gemini AI
 
         Args:
             image: PIL Image object (already processed and compressed)
+            image_filename: Optional filename for context
 
         Returns:
-            Dictionary containing extracted attributes
+            Dictionary containing extracted attributes from Gemini
         """
-        # Placeholder implementation
-        # In a real implementation, you would:
-        # 1. The image is already preprocessed and optimized
-        # 2. Run it through your trained model
-        # 3. Post-process the results
-        # 4. Return structured attribute data
-
-        # Get image dimensions for reference
-        width, height = image.size
-
-        return {
-            "clothing_type": "placeholder",
-            "colors": ["placeholder"],
-            "patterns": ["placeholder"],
-            "style": "placeholder",
-            "material": "placeholder",
-            "texture": "placeholder",
-            "image_dimensions": f"{width}x{height}",
-            "confidence_scores": {
-                "clothing_type": 0.0,
-                "colors": 0.0,
-                "patterns": 0.0,
-                "style": 0.0,
-                "material": 0.0,
-                "texture": 0.0,
-            },
-        }
+        try:
+            # Initialize Gemini attributor
+            gemini_attributor = GeminiAttributor()
+            
+            # Use Gemini to extract clothing attributes
+            attributes = gemini_attributor.extract(image, image_filename)
+            
+            # Add processing metadata
+            width, height = image.size
+            attributes["processing_metadata"] = {
+                "processed_image_dimensions": f"{width}x{height}",
+                "extraction_method": "gemini_ai",
+                "model": "gemini-2.0-flash"
+            }
+            
+            return attributes
+            
+        except Exception as e:
+            # Return error information if Gemini processing fails
+            return {
+                "error": f"Failed to extract attributes using Gemini: {str(e)}",
+                "fallback_data": {
+                    "clothing_type": "unknown",
+                    "category": "unknown", 
+                    "primary_color": "unknown",
+                    "extraction_method": "failed_gemini",
+                    "image_dimensions": f"{image.size[0]}x{image.size[1]}"
+                }
+            }
 
     @staticmethod
     def get_compressed_image_bytes(image: Image.Image, format: str = "JPEG") -> bytes:
