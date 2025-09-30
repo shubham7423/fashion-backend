@@ -22,14 +22,16 @@ class GeminiAttributor(Attributor):
         # Retry logic for rate limiting
         max_retries = 3
         base_delay = 2  # Base delay in seconds
-        
+
         for attempt in range(max_retries):
             try:
                 # Add a small delay before each request to respect rate limits
                 if attempt > 0:
                     # Exponential backoff with jitter
-                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                    print(f"Rate limit hit, waiting {delay:.1f} seconds before retry {attempt + 1}/{max_retries}...")
+                    delay = base_delay * (2**attempt) + random.uniform(0, 1)
+                    print(
+                        f"Rate limit hit, waiting {delay:.1f} seconds before retry {attempt + 1}/{max_retries}..."
+                    )
                     time.sleep(delay)
                 else:
                     # Small delay even on first attempt to be respectful
@@ -68,9 +70,13 @@ class GeminiAttributor(Attributor):
 
             except Exception as e:
                 error_message = str(e)
-                
+
                 # Check if it's a rate limit error
-                if "429" in error_message or "quota" in error_message.lower() or "rate" in error_message.lower():
+                if (
+                    "429" in error_message
+                    or "quota" in error_message.lower()
+                    or "rate" in error_message.lower()
+                ):
                     if attempt < max_retries - 1:
                         # Will retry on next iteration
                         continue
@@ -78,11 +84,11 @@ class GeminiAttributor(Attributor):
                         # Final attempt failed
                         return {
                             "error": f"Rate limit exceeded after {max_retries} attempts. Please wait a few minutes before trying again. Consider processing fewer images at once.",
-                            "suggestion": "Try processing images one by one or in smaller batches to stay within rate limits."
+                            "suggestion": "Try processing images one by one or in smaller batches to stay within rate limits.",
                         }
                 else:
                     # Non-rate-limit error, return immediately
                     return {"error": f"Failed to process image: {error_message}"}
-        
+
         # This shouldn't be reached, but just in case
         return {"error": "Unexpected error in retry loop"}

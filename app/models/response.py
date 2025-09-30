@@ -14,7 +14,7 @@ class ImageInfo(BaseModel):
 
 class ImageAnalysisResult(BaseModel):
     """Analysis result for a single image"""
-    
+
     image_info: ImageInfo
     status: str = "ready_for_processing"
     attributes: Optional[dict] = None
@@ -38,6 +38,19 @@ class HealthResponse(BaseModel):
 
     status: str
     timestamp: str
+
+
+class StylerResponse(BaseModel):
+    """Response model for outfit styling recommendations"""
+    
+    success: bool
+    message: str
+    user_id: str
+    styling_timestamp: str
+    request_parameters: dict
+    outfit_recommendation: Optional[dict] = None
+    available_items_count: int
+    error: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):

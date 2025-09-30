@@ -50,22 +50,20 @@ def test_api():
     test_image_paths = [
         create_test_image("red", (150, 150)),
         create_test_image("blue", (200, 100)),
-        create_test_image("green", (100, 200))
+        create_test_image("green", (100, 200)),
     ]
 
     try:
         files = []
         file_objects = []
-        
+
         # Open all files
         for i, path in enumerate(test_image_paths):
             f = open(path, "rb")
             file_objects.append(f)
             files.append(("files", (f"test_image_{i+1}.jpg", f, "image/jpeg")))
 
-        response = requests.post(
-            f"{base_url}/api/v1/attribute_clothes", files=files
-        )
+        response = requests.post(f"{base_url}/api/v1/attribute_clothes", files=files)
 
         print(f"Status: {response.status_code}")
         if response.status_code == 200:

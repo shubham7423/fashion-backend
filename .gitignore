@@ -50,6 +50,9 @@ image_attributes.json
 # User-specific JSON files
 *_image_attributes.json
 
+# Test files (optional - uncomment if you don't want to track test files)
+# test_*.py
+
 # Logs
 *.log
 
