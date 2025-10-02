@@ -529,8 +529,8 @@ class ClothingAttributionService:
                 )
                 saved_paths["processed"] = processed_path
 
-            # Extract clothing attributes using Gemini
-            attributes = ClothingAttributionService.extract_clothing_attributes(
+            # Extract clothing attributes using Gemini (async to avoid blocking event loop)
+            attributes = await ClothingAttributionService.extract_clothing_attributes(
                 processed_image, file.filename
             )
 
@@ -589,7 +589,7 @@ class ClothingAttributionService:
                 pass
 
     @staticmethod
-    def extract_clothing_attributes(
+    async def extract_clothing_attributes(
         image: Image.Image, image_filename: str = None
     ) -> Dict[str, Any]:
         """
@@ -606,8 +606,11 @@ class ClothingAttributionService:
             # Initialize Gemini attributor
             gemini_attributor = GeminiAttributor()
 
-            # Use Gemini to extract clothing attributes
-            attributes = gemini_attributor.extract(image, image_filename)
+            # Use asyncio.to_thread to run the blocking Gemini extraction in a thread
+            # This prevents blocking the FastAPI event loop
+            attributes = await asyncio.to_thread(
+                gemini_attributor.extract, image, image_filename
+            )
 
             # Add processing metadata
             width, height = image.size
