@@ -3,6 +3,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.models.response import StylerResponse
 from app.services.styler.gemini_styler import GeminiStyler
+from app.services.styler.openai_styler import OpenAIStyler
 from datetime import datetime
 from typing import Dict, Any, List
 import json
@@ -119,9 +120,13 @@ class StylerService:
                     error="No valid clothing items available for styling"
                 )
             
-            # Initialize the Gemini styler
+            # Initialize the styler based on configuration
             try:
-                styler = GeminiStyler()
+                if settings.DEFAULT_STYLER.lower() == "openai":
+                    styler = OpenAIStyler()
+                else:
+                    # Default to Gemini
+                    styler = GeminiStyler()
             except ValueError as e:
                 raise HTTPException(
                     status_code=500,

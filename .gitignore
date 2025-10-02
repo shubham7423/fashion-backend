@@ -44,6 +44,12 @@ saved_images/
 # User-specific data directories
 user_data/
 
+# Test user data directories
+test_user_data/
+
+# Pytest cache
+.pytest_cache/
+
 # Image attributes JSON file
 image_attributes.json
 

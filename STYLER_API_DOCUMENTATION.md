@@ -3,6 +3,8 @@
 ## Overview
 The Styler API generates outfit recommendations based on a user's stored clothing attributes. It analyzes the user's digital closet (images processed through the `/attribute_clothes` endpoint) and creates stylish outfit combinations suitable for specific weather, city, and occasion parameters.
 
+The API supports both Gemini (Google) and OpenAI models for generating recommendations. The default model can be configured via the `DEFAULT_STYLER` environment variable (set to "gemini" or "openai").
+
 ## Endpoint: POST /api/v1/styler
 
 ### Description
@@ -188,6 +190,6 @@ curl -X POST "http://localhost:8000/api/v1/styler" \
 
 ### Rate Limiting
 
-The styler endpoint uses the Gemini API, which has rate limits:
+The styler endpoint uses either the Gemini API or OpenAI API, both of which have rate limits:
 - If you encounter rate limiting, the system will automatically retry with exponential backoff
 - Consider spacing requests if making multiple styling requests in succession

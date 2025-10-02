@@ -1,4 +1,7 @@
 from abc import ABC, abstractmethod
+import json
+import time
+import random
 
 class Styler(ABC):
     
@@ -57,6 +60,98 @@ Required output format (valid JSON only):
 CRITICAL REMINDER: Use exact "image" field values from the JSON items. For example, if selecting an item with "image": "top_1_shirt.jpg", use exactly "top_1_shirt.jpg" in your response.
 
 Generate ONLY the JSON response now:"""
+    
+    def _retry_with_backoff(self, operation_func, max_retries=3, base_delay=2):
+        """
+        Execute an operation with retry logic and exponential backoff.
+        
+        Args:
+            operation_func: Function to execute that returns the response text
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds
+            
+        Returns:
+            str: Response text from the operation
+        """
+        for attempt in range(max_retries):
+            try:
+                # Add a small delay before each request to respect rate limits
+                if attempt > 0:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    print(f"Rate limit hit, waiting {delay:.1f} seconds before retry {attempt + 1}/{max_retries}...")
+                    time.sleep(delay)
+                else:
+                    # Small delay even on first attempt to be respectful
+                    time.sleep(1)
+
+                # Execute the operation
+                return operation_func()
+                        
+            except Exception as e:
+                error_message = str(e)
+                
+                # Check if it's a rate limit error
+                if self._is_rate_limit_error(error_message):
+                    if attempt < max_retries - 1:
+                        # Will retry on next iteration
+                        continue
+                    else:
+                        # Final attempt failed
+                        return self._create_rate_limit_error_response(max_retries)
+                else:
+                    # Non-rate-limit error, return immediately
+                    return json.dumps({
+                        "error": f"Failed to generate outfit: {error_message}"
+                    })
+        
+        # This shouldn't be reached, but just in case
+        return json.dumps({
+            "error": "Unexpected error in retry loop"
+        })
+    
+    def _is_rate_limit_error(self, error_message: str) -> bool:
+        """Check if the error is a rate limit error."""
+        return ("429" in error_message or 
+                "quota" in error_message.lower() or 
+                "rate" in error_message.lower())
+    
+    def _create_rate_limit_error_response(self, max_retries: int) -> str:
+        """Create a standardized rate limit error response."""
+        return json.dumps({
+            "error": f"Rate limit exceeded after {max_retries} attempts. Please wait a few minutes before trying again.",
+            "suggestion": "The API quota may be exceeded. Try again in a few minutes."
+        })
+    
+    def _parse_json_response(self, response_text: str) -> str:
+        """
+        Parse and validate JSON response from the model.
+        
+        Args:
+            response_text: Raw response text from the model
+            
+        Returns:
+            str: Validated JSON string
+        """
+        try:
+            # Attempt to parse the JSON to ensure it's valid
+            outfit_json = json.loads(response_text)
+            return response_text
+        except json.JSONDecodeError:
+            # If the response isn't valid JSON, try to extract it
+            # Sometimes the model adds extra text, so we'll look for JSON
+            start_idx = response_text.find("{")
+            end_idx = response_text.rfind("}") + 1
+            if start_idx != -1 and end_idx != 0:
+                json_str = response_text[start_idx:end_idx]
+                # Validate the extracted JSON
+                outfit_json = json.loads(json_str)
+                return json_str
+            else:
+                return json.dumps({
+                    "error": "Could not parse JSON response from model",
+                    "raw_response": response_text
+                })
     
     @abstractmethod
     def style(self, clothing_attributes: list, city: str = "Toronto", weather: str = "early fall weather - expect temperatures around 15-20°C, partly cloudy", occasion: str = "casual day out") -> str:

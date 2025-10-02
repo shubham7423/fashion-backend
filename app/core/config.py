@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
+    # Styler configuration
+    DEFAULT_STYLER: str = os.getenv("DEFAULT_STYLER", "gemini")  # Options: "gemini" or "openai"
+
     # Server settings
     HOST: str = "0.0.0.0"
     PORT: int = 8000
