@@ -17,27 +17,31 @@ class StylerService:
     @staticmethod
     def get_user_json_file_path(user_id: str) -> Path:
         """Get the path to user's JSON file containing image attributes"""
-        # Normalize and validate user_id
-        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
+        # Normalize and validate user_id ONCE here
+        normalized_user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
         if settings.CREATE_USER_SUBDIRS:
-            user_dir = Path(settings.USER_DATA_DIRECTORY) / user_id
-            return user_dir / settings.ATTRIBUTES_JSON_FILE
+            user_dir = Path(settings.USER_DATA_DIRECTORY) / normalized_user_id
+            json_path = user_dir / settings.ATTRIBUTES_JSON_FILE
         else:
-            return Path(f"{user_id}_{settings.ATTRIBUTES_JSON_FILE}")
+            json_path = Path(f"{normalized_user_id}_{settings.ATTRIBUTES_JSON_FILE}")
+        # Ensure the resolved path is a descendant of the base directory
+        base = Path(settings.USER_DATA_DIRECTORY).resolve()
+        candidate = json_path.resolve()
+        if not str(candidate).startswith(str(base)):
+            raise HTTPException(
+                status_code=400, detail="User ID resolves outside allowed directory."
+            )
+        return json_path
 
     @staticmethod
     def load_user_attributes(user_id: str) -> Dict[str, Any]:
         """Load user's clothing attributes from their JSON file"""
-        # Normalize and validate user_id
-        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
         json_file_path = StylerService.get_user_json_file_path(user_id)
-
         if not json_file_path.exists():
             raise HTTPException(
                 status_code=404,
                 detail=f"No clothing data found for user '{user_id}'. Please upload some images first using /attribute_clothes endpoint.",
             )
-
         try:
             with open(json_file_path, "r", encoding="utf-8") as f:
                 return json.load(f)

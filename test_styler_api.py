@@ -7,6 +7,8 @@ import requests
 import json
 from pathlib import Path
 
+TIMEOUT = 10  # seconds for all HTTP requests
+
 
 def test_styler_api():
     """Test the Styler endpoint"""
@@ -40,6 +42,7 @@ def test_styler_api():
                 "weather": test_weather,
                 "occasion": test_occasion,
             },
+            timeout=TIMEOUT,
         )
 
         print(f"Status: {response.status_code}")
@@ -93,7 +96,7 @@ def test_styler_api():
     print(f"\n🔄 Testing with default parameters...")
     try:
         response = requests.post(
-            f"{base_url}/api/v1/styler", params={"user_id": test_user_id}
+            f"{base_url}/api/v1/styler", params={"user_id": test_user_id}, timeout=TIMEOUT
         )
 
         print(f"Status: {response.status_code}")
@@ -115,7 +118,7 @@ def test_health_endpoint():
     """Quick health check"""
     base_url = "http://localhost:8000"
     try:
-        response = requests.get(f"{base_url}/api/v1/health")
+        response = requests.get(f"{base_url}/api/v1/health", timeout=TIMEOUT)
         if response.status_code == 200:
             print("✅ API is healthy and running")
             return True
