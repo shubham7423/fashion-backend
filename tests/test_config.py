@@ -18,7 +18,15 @@ class TestConfig:
 
     def test_allowed_extensions(self):
         """Test allowed file extensions"""
-        expected_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".avif"}
+        expected_extensions = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".webp",
+            ".avif",
+        }
         assert settings.ALLOWED_EXTENSIONS == expected_extensions
 
     def test_image_settings(self):
@@ -41,9 +49,9 @@ class TestConfig:
         custom_settings = Settings(
             APP_NAME="Custom App",
             MAX_FILE_SIZE=5 * 1024 * 1024,  # 5MB
-            TARGET_WIDTH=256
+            TARGET_WIDTH=256,
         )
-        
+
         assert custom_settings.APP_NAME == "Custom App"
         assert custom_settings.MAX_FILE_SIZE == 5 * 1024 * 1024
         assert custom_settings.TARGET_WIDTH == 256

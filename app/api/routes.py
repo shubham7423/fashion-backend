@@ -1,7 +1,11 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from app.services.attribution_service import ClothingAttributionService
 from app.services.styler_service import StylerService
-from app.models.response import AttributeAnalysisResponse, HealthResponse, StylerResponse
+from app.models.response import (
+    AttributeAnalysisResponse,
+    HealthResponse,
+    StylerResponse,
+)
 from datetime import datetime
 from typing import List
 
@@ -41,26 +45,23 @@ async def styler(
     city: str = Query(default="Toronto", description="City for the occasion"),
     weather: str = Query(
         default="early fall weather - expect temperatures around 15-20°C, partly cloudy",
-        description="Weather conditions"
+        description="Weather conditions",
     ),
-    occasion: str = Query(
-        default="casual day out",
-        description="The occasion type"
-    )
+    occasion: str = Query(default="casual day out", description="The occasion type"),
 ):
     """
     Generate outfit recommendations based on user's stored clothing attributes
-    
+
     This endpoint analyzes the user's clothing collection (stored from previous
     /attribute_clothes uploads) and generates outfit recommendations suitable
     for the specified city, weather, and occasion.
-    
+
     Args:
         user_id: Unique identifier for the user (required)
         city: City for the occasion (default: "Toronto")
         weather: Weather conditions (default: fall weather description)
         occasion: The occasion type (default: "casual day out")
-        
+
     Returns:
         JSON response with outfit recommendation including:
         - Selected clothing items (top, bottom, outerwear)
@@ -69,11 +70,13 @@ async def styler(
         - Accessory recommendations
     """
     # Validate parameters
-    validated_params = StylerService.validate_styling_parameters(city, weather, occasion)
-    
+    validated_params = StylerService.validate_styling_parameters(
+        city, weather, occasion
+    )
+
     return await StylerService.generate_outfit_recommendation(
         user_id=user_id,
         city=validated_params["city"],
         weather=validated_params["weather"],
-        occasion=validated_params["occasion"]
+        occasion=validated_params["occasion"],
     )

@@ -3,6 +3,7 @@ from app.core.config import settings
 from openai import OpenAI
 import json
 
+
 class OpenAIStyler(Styler):
 
     def __init__(self):
@@ -12,7 +13,13 @@ class OpenAIStyler(Styler):
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = "gpt-4o-mini"  # Using GPT-4o-mini for cost efficiency
 
-    def style(self, clothing_attributes: list, city: str = "Toronto", weather: str = "early fall weather - expect temperatures around 15-20°C, partly cloudy", occasion: str = "casual day out") -> str:
+    def style(
+        self,
+        clothing_attributes: list,
+        city: str = "Toronto",
+        weather: str = "early fall weather - expect temperatures around 15-20°C, partly cloudy",
+        occasion: str = "casual day out",
+    ) -> str:
         """
         Generate a styled outfit from the given clothing attributes using OpenAI model.
 
@@ -37,11 +44,14 @@ class OpenAIStyler(Styler):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are an expert AI fashion stylist. Always respond with valid JSON only."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert AI fashion stylist. Always respond with valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=1000,
-                temperature=0.7
+                temperature=0.7,
             )
 
             # Extract the response text
@@ -50,10 +60,10 @@ class OpenAIStyler(Styler):
 
         # Use the common retry logic
         response_text = self._retry_with_backoff(generate_response)
-        
+
         # If response_text is an error message (JSON string), return it directly
         if response_text.startswith('{"error":'):
             return response_text
-            
+
         # Otherwise, parse and validate the JSON response
         return self._parse_json_response(response_text)

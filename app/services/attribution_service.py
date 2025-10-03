@@ -7,6 +7,7 @@ from app.models.response import (
     ImageAnalysisResult,
 )
 from app.services.attribution.gemini_attributor import GeminiAttributor
+from app.core.user_id_utils import normalize_user_id
 from datetime import datetime
 from typing import Any, Dict, Tuple, List
 import io
@@ -129,8 +130,9 @@ class ClothingAttributionService:
         Returns:
             Path object of the images directory
         """
+        # Normalize and validate user_id if provided
         if user_id and settings.CREATE_USER_SUBDIRS:
-            # Create user-specific directory structure
+            user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
             base_dir = Path(settings.USER_DATA_DIRECTORY) / user_id
             images_dir = base_dir / settings.IMAGES_DIRECTORY
         else:
@@ -219,6 +221,8 @@ class ClothingAttributionService:
         Returns:
             Path to the user's JSON file
         """
+        # Normalize and validate user_id
+        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
         if settings.CREATE_USER_SUBDIRS:
             user_dir = Path(settings.USER_DATA_DIRECTORY) / user_id
             user_dir.mkdir(parents=True, exist_ok=True)
@@ -252,6 +256,8 @@ class ClothingAttributionService:
         Returns:
             Dictionary containing existing attributes or empty dict if file doesn't exist
         """
+        # Normalize and validate user_id
+        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
         json_file_path = ClothingAttributionService.get_user_json_file_path(user_id)
 
         if json_file_path.exists():
@@ -294,6 +300,9 @@ class ClothingAttributionService:
         """
         if not settings.SAVE_ATTRIBUTES_JSON:
             return
+
+        # Normalize and validate user_id
+        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
 
         # Load existing data for this user
         data = ClothingAttributionService.load_existing_attributes(user_id)
@@ -346,6 +355,9 @@ class ClothingAttributionService:
         Returns:
             Tuple of (is_duplicate, existing_data)
         """
+        # Normalize and validate user_id
+        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
+
         if not settings.AVOID_DUPLICATES:
             return False, {}
 
@@ -379,10 +391,8 @@ class ClothingAttributionService:
         if not user_id or not user_id.strip():
             raise HTTPException(status_code=400, detail="User ID is required")
 
-        # Sanitize user_id to prevent directory traversal attacks
-        user_id = (
-            user_id.strip().replace("/", "_").replace("\\", "_").replace("..", "_")
-        )
+        # Normalize and validate user_id
+        user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
 
         # Limit the number of files to prevent abuse
         max_files = 10  # You can make this configurable
@@ -467,7 +477,6 @@ class ClothingAttributionService:
             ImageAnalysisResult with analysis data or error
         """
         saved_paths = {}
-
         try:
             # Validate file type
             if not ClothingAttributionService.validate_image_file(file):
@@ -491,7 +500,6 @@ class ClothingAttributionService:
             )
 
             if is_duplicate:
-                # Return existing attributes for duplicate image
                 return ImageAnalysisResult(
                     image_info=image_info,
                     status="duplicate_found",
@@ -509,20 +517,16 @@ class ClothingAttributionService:
                     error=None,
                 )
 
-            # Process new image
             pil_image = Image.open(io.BytesIO(image_data))
 
-            # Generate unique filename for saving
             unique_filename = ClothingAttributionService.generate_unique_filename(
                 file.filename, user_id
             )
 
-            # Compress and resize the image for optimal clothing recognition
             processed_image, processing_info = (
                 ClothingAttributionService.compress_and_resize_image(pil_image)
             )
 
-            # Save processed image if enabled (user-specific)
             if settings.SAVE_IMAGES and settings.SAVE_PROCESSED:
                 processed_path = ClothingAttributionService.save_processed_image(
                     processed_image, unique_filename, user_id
@@ -534,32 +538,41 @@ class ClothingAttributionService:
                 processed_image, file.filename
             )
 
-            # Add saved paths to attributes if images were saved
+            # Hardened error handling for Gemini extraction
+            if not isinstance(attributes, dict) or "error" in attributes:
+                await file.seek(0)
+                error_message = (
+                    attributes["error"]
+                    if isinstance(attributes, dict) and "error" in attributes
+                    else f"Invalid Gemini response format: expected dict, got {type(attributes).__name__}"
+                )
+                return ImageAnalysisResult(
+                    image_info=image_info,
+                    status="attributes_failed",
+                    attributes=None,
+                    error=error_message,
+                )
+
             if saved_paths:
                 attributes["saved_images"] = saved_paths
 
-            # Add processing information
             attributes["processing_info"] = processing_info
             attributes["image_hash"] = image_hash
             attributes["user_id"] = user_id
 
-            # Save attributes to user-specific JSON file for first-time images
+            # Only persist attributes if Gemini extraction succeeded
             ClothingAttributionService.save_attributes_to_json(
                 image_hash, attributes, image_info, user_id, saved_paths
             )
 
-            # Reset file pointer
             await file.seek(0)
-
             return ImageAnalysisResult(
                 image_info=image_info,
                 status="attributes_extracted",
                 attributes=attributes,
                 error=None,
             )
-
         except Exception as e:
-            # Try to get image info for error case
             try:
                 if file.filename:
                     file_size = await ClothingAttributionService.validate_file_size(
@@ -571,14 +584,12 @@ class ClothingAttributionService:
                 else:
                     raise ValueError("No filename")
             except:
-                # Create minimal image info for error case
                 image_info = ImageInfo(
                     filename=file.filename or "unknown",
                     content_type=file.content_type or "unknown",
                     file_size_bytes=0,
                     file_size_mb=0.0,
                 )
-
             return ImageAnalysisResult(
                 image_info=image_info, status="error", attributes=None, error=str(e)
             )

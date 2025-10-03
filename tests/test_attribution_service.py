@@ -15,8 +15,8 @@ class TestClothingAttributionService:
         mock_file = Mock(spec=UploadFile)
         mock_file.filename = "test.jpg"
         mock_file.content_type = "image/jpeg"
-        
-        with patch('app.core.config.settings.ALLOWED_EXTENSIONS', {'.jpg', '.jpeg'}):
+
+        with patch("app.core.config.settings.ALLOWED_EXTENSIONS", {".jpg", ".jpeg"}):
             result = ClothingAttributionService.validate_image_file(mock_file)
             assert result is True
 
@@ -25,8 +25,8 @@ class TestClothingAttributionService:
         mock_file = Mock(spec=UploadFile)
         mock_file.filename = "test.txt"
         mock_file.content_type = "text/plain"
-        
-        with patch('app.core.config.settings.ALLOWED_EXTENSIONS', {'.jpg', '.jpeg'}):
+
+        with patch("app.core.config.settings.ALLOWED_EXTENSIONS", {".jpg", ".jpeg"}):
             result = ClothingAttributionService.validate_image_file(mock_file)
             assert result is False
 
@@ -34,7 +34,7 @@ class TestClothingAttributionService:
         """Test validation of file with no filename"""
         mock_file = Mock(spec=UploadFile)
         mock_file.filename = None
-        
+
         result = ClothingAttributionService.validate_image_file(mock_file)
         assert result is False
 
@@ -43,8 +43,8 @@ class TestClothingAttributionService:
         mock_file = Mock(spec=UploadFile)
         mock_file.filename = "test.jpg"
         mock_file.content_type = "text/plain"
-        
-        with patch('app.core.config.settings.ALLOWED_EXTENSIONS', {'.jpg', '.jpeg'}):
+
+        with patch("app.core.config.settings.ALLOWED_EXTENSIONS", {".jpg", ".jpeg"}):
             result = ClothingAttributionService.validate_image_file(mock_file)
             assert result is False
 
@@ -53,8 +53,8 @@ class TestClothingAttributionService:
         """Test file size validation for valid size"""
         mock_file = AsyncMock(spec=UploadFile)
         mock_file.read.return_value = b"x" * 1024  # 1KB file
-        
-        with patch('app.core.config.settings.MAX_FILE_SIZE', 10 * 1024 * 1024):  # 10MB
+
+        with patch("app.core.config.settings.MAX_FILE_SIZE", 10 * 1024 * 1024):  # 10MB
             size = await ClothingAttributionService.validate_file_size(mock_file)
             assert size == 1024
 
@@ -63,8 +63,10 @@ class TestClothingAttributionService:
         """Test file size validation for oversized file"""
         mock_file = AsyncMock(spec=UploadFile)
         mock_file.read.return_value = b"x" * (11 * 1024 * 1024)  # 11MB file
-        
-        with patch('app.core.config.settings.MAX_FILE_SIZE', 10 * 1024 * 1024):  # 10MB limit
+
+        with patch(
+            "app.core.config.settings.MAX_FILE_SIZE", 10 * 1024 * 1024
+        ):  # 10MB limit
             with pytest.raises(Exception):  # Should raise HTTPException
                 await ClothingAttributionService.validate_file_size(mock_file)
 
@@ -73,9 +75,9 @@ class TestClothingAttributionService:
         mock_file = Mock(spec=UploadFile)
         mock_file.filename = "test.jpg"
         mock_file.content_type = "image/jpeg"
-        
+
         image_info = ClothingAttributionService.create_image_info(mock_file, 2048)
-        
+
         assert isinstance(image_info, ImageInfo)
         assert image_info.filename == "test.jpg"
         assert image_info.content_type == "image/jpeg"
@@ -86,12 +88,14 @@ class TestClothingAttributionService:
         """Test image compression and resizing"""
         # Create a test image
         test_image = Image.new("RGB", (800, 600), color="red")
-        
-        with patch('app.core.config.settings.TARGET_WIDTH', 512):
-            with patch('app.core.config.settings.TARGET_HEIGHT', 512):
-                with patch('app.core.config.settings.MAINTAIN_ASPECT_RATIO', True):
-                    processed_image, info = ClothingAttributionService.compress_and_resize_image(test_image)
-        
+
+        with patch("app.core.config.settings.TARGET_WIDTH", 512):
+            with patch("app.core.config.settings.TARGET_HEIGHT", 512):
+                with patch("app.core.config.settings.MAINTAIN_ASPECT_RATIO", True):
+                    processed_image, info = (
+                        ClothingAttributionService.compress_and_resize_image(test_image)
+                    )
+
         # Check that image was processed
         assert isinstance(processed_image, Image.Image)
         assert isinstance(info, dict)
@@ -102,8 +106,10 @@ class TestClothingAttributionService:
         """Test RGB conversion during compression"""
         # Create a RGBA test image (needs conversion)
         test_image = Image.new("RGBA", (400, 300), color=(255, 0, 0, 128))
-        
-        processed_image, info = ClothingAttributionService.compress_and_resize_image(test_image)
-        
+
+        processed_image, info = ClothingAttributionService.compress_and_resize_image(
+            test_image
+        )
+
         # Should be converted to RGB
         assert processed_image.mode == "RGB"

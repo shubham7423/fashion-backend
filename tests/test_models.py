@@ -5,7 +5,7 @@ from app.models.response import (
     AttributeAnalysisResponse,
     HealthResponse,
     StylerResponse,
-    ErrorResponse
+    ErrorResponse,
 )
 
 
@@ -18,7 +18,7 @@ class TestModels:
             filename="test.jpg",
             content_type="image/jpeg",
             file_size_bytes=1024,
-            file_size_mb=0.001
+            file_size_mb=0.001,
         )
         assert image_info.filename == "test.jpg"
         assert image_info.content_type == "image/jpeg"
@@ -31,15 +31,15 @@ class TestModels:
             filename="test.jpg",
             content_type="image/jpeg",
             file_size_bytes=1024,
-            file_size_mb=0.001
+            file_size_mb=0.001,
         )
-        
+
         result = ImageAnalysisResult(
             image_info=image_info,
             status="processed",
-            attributes={"category": "T-Shirt", "color": "blue"}
+            attributes={"category": "T-Shirt", "color": "blue"},
         )
-        
+
         assert result.image_info.filename == "test.jpg"
         assert result.status == "processed"
         assert result.attributes["category"] == "T-Shirt"
@@ -47,10 +47,7 @@ class TestModels:
 
     def test_health_response_creation(self):
         """Test HealthResponse model creation"""
-        health = HealthResponse(
-            status="healthy",
-            timestamp="2023-01-01T00:00:00"
-        )
+        health = HealthResponse(status="healthy", timestamp="2023-01-01T00:00:00")
         assert health.status == "healthy"
         assert health.timestamp == "2023-01-01T00:00:00"
 
@@ -63,9 +60,9 @@ class TestModels:
             styling_timestamp="2023-01-01T00:00:00",
             request_parameters={"city": "Toronto"},
             outfit_recommendation={"top": "shirt.jpg"},
-            available_items_count=5
+            available_items_count=5,
         )
-        
+
         assert styler_response.success is True
         assert styler_response.user_id == "test_user"
         assert styler_response.available_items_count == 5
@@ -73,11 +70,8 @@ class TestModels:
 
     def test_error_response_creation(self):
         """Test ErrorResponse model creation"""
-        error_response = ErrorResponse(
-            error="Test error",
-            detail="Error details"
-        )
-        
+        error_response = ErrorResponse(error="Test error", detail="Error details")
+
         assert error_response.success is False
         assert error_response.error == "Test error"
         assert error_response.detail == "Error details"

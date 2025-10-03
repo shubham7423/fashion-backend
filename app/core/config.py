@@ -52,7 +52,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
     # Styler configuration
-    DEFAULT_STYLER: str = os.getenv("DEFAULT_STYLER", "gemini")  # Options: "gemini" or "openai"
+    DEFAULT_STYLER: str = os.getenv(
+        "DEFAULT_STYLER", "gemini"
+    )  # Options: "gemini" or "openai"
 
     # Server settings
     HOST: str = "0.0.0.0"

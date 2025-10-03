@@ -42,7 +42,7 @@ class HealthResponse(BaseModel):
 
 class StylerResponse(BaseModel):
     """Response model for outfit styling recommendations"""
-    
+
     success: bool
     message: str
     user_id: str
