@@ -1,0 +1,230 @@
+"""
+Retry utility with exponential backoff for API calls.
+
+This module provides a reusable retry mechanism with exponential backoff
+and jitter for handling rate limits and transient errors in API calls.
+"""
+
+import time
+import random
+import json
+from typing import Callable, Any, Optional
+
+
+class RetryConfig:
+    """Configuration for retry behavior."""
+    
+    def __init__(
+        self,
+        max_retries: int = 3,
+        base_delay: float = 2.0,
+        max_delay: float = 60.0,
+        backoff_multiplier: float = 2.0,
+        jitter: bool = True,
+        initial_delay: float = 1.0
+    ):
+        """
+        Initialize retry configuration.
+        
+        Args:
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds for exponential backoff
+            max_delay: Maximum delay cap in seconds
+            backoff_multiplier: Multiplier for exponential backoff
+            jitter: Whether to add random jitter to delays
+            initial_delay: Delay before first attempt in seconds
+        """
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self.backoff_multiplier = backoff_multiplier
+        self.jitter = jitter
+        self.initial_delay = initial_delay
+
+
+class RetryError(Exception):
+    """Exception raised when all retry attempts are exhausted."""
+    
+    def __init__(self, message: str, attempts: int, last_error: Optional[Exception] = None):
+        super().__init__(message)
+        self.attempts = attempts
+        self.last_error = last_error
+
+
+class RetryHandler:
+    """Handles retry logic with exponential backoff for API calls."""
+    
+    def __init__(self, config: Optional[RetryConfig] = None):
+        """
+        Initialize retry handler.
+        
+        Args:
+            config: Retry configuration, uses defaults if None
+        """
+        self.config = config or RetryConfig()
+    
+    def is_rate_limit_error(self, error_message: str) -> bool:
+        """
+        Check if the error is a rate limit error.
+        
+        Args:
+            error_message: Error message to check
+            
+        Returns:
+            bool: True if it's a rate limit error
+        """
+        error_lower = error_message.lower()
+        return (
+            "429" in error_message
+            or "quota" in error_lower
+            or "rate" in error_lower
+            or "too many requests" in error_lower
+            or "rate limit" in error_lower
+        )
+    
+    def is_retryable_error(self, error_message: str) -> bool:
+        """
+        Check if the error is retryable (rate limit or transient errors).
+        
+        Args:
+            error_message: Error message to check
+            
+        Returns:
+            bool: True if the error is retryable
+        """
+        return self.is_rate_limit_error(error_message)
+    
+    def calculate_delay(self, attempt: int) -> float:
+        """
+        Calculate delay for the given attempt number.
+        
+        Args:
+            attempt: Current attempt number (0-based)
+            
+        Returns:
+            float: Delay in seconds
+        """
+        if attempt == 0:
+            return self.config.initial_delay
+        
+        # Exponential backoff
+        delay = self.config.base_delay * (self.config.backoff_multiplier ** attempt)
+        
+        # Apply jitter if enabled
+        if self.config.jitter:
+            delay += random.uniform(0, 1)
+        
+        # Cap the delay
+        return min(delay, self.config.max_delay)
+    
+    def execute_with_retry(
+        self,
+        operation: Callable[[], Any],
+        error_handler: Optional[Callable[[str, int], Any]] = None,
+        context: str = "operation"
+    ) -> Any:
+        """
+        Execute an operation with retry logic and exponential backoff.
+        
+        Args:
+            operation: Function to execute that may raise exceptions
+            error_handler: Optional function to handle final failure
+            context: Description of the operation for logging
+            
+        Returns:
+            Any: Result from the operation
+            
+        Raises:
+            RetryError: When all retry attempts are exhausted
+        """
+        last_error = None
+        
+        for attempt in range(self.config.max_retries):
+            try:
+                # Calculate and apply delay
+                delay = self.calculate_delay(attempt)
+                if delay > 0:
+                    if attempt > 0:
+                        print(
+                            f"Rate limit hit for {context}, waiting {delay:.1f} seconds "
+                            f"before retry {attempt + 1}/{self.config.max_retries}..."
+                        )
+                    time.sleep(delay)
+                
+                # Execute the operation
+                return operation()
+                
+            except Exception as e:
+                last_error = e
+                error_message = str(e)
+                
+                # Check if it's a retryable error
+                if self.is_retryable_error(error_message):
+                    if attempt < self.config.max_retries - 1:
+                        # Will retry on next iteration
+                        continue
+                    else:
+                        # Final attempt failed with retryable error
+                        if error_handler:
+                            return error_handler(error_message, self.config.max_retries)
+                        else:
+                            raise RetryError(
+                                f"Rate limit exceeded after {self.config.max_retries} attempts for {context}",
+                                self.config.max_retries,
+                                last_error
+                            )
+                else:
+                    # Non-retryable error, fail immediately
+                    if error_handler:
+                        return error_handler(error_message, attempt + 1)
+                    else:
+                        raise RetryError(
+                            f"Non-retryable error in {context}: {error_message}",
+                            attempt + 1,
+                            last_error
+                        )
+        
+        # This shouldn't be reached, but just in case
+        if error_handler:
+            return error_handler("Unexpected error in retry loop", self.config.max_retries)
+        else:
+            raise RetryError(
+                f"Unexpected error in retry loop for {context}",
+                self.config.max_retries,
+                last_error
+            )
+
+
+def create_error_response(error_message: str, max_retries: int, suggestion: str = None) -> dict:
+    """
+    Create a standardized error response dictionary.
+    
+    Args:
+        error_message: The error message
+        max_retries: Number of attempts made
+        suggestion: Optional suggestion for the user
+        
+    Returns:
+        dict: Error response dictionary
+    """
+    response = {"error": error_message}
+    if suggestion:
+        response["suggestion"] = suggestion
+    return response
+
+
+def create_rate_limit_error(max_retries: int) -> dict:
+    """
+    Create a standardized rate limit error response.
+    
+    Args:
+        max_retries: Number of attempts made
+        
+    Returns:
+        dict: Rate limit error response
+    """
+    return create_error_response(
+        f"Rate limit exceeded after {max_retries} attempts. Please wait a few minutes before trying again.",
+        max_retries,
+        "Consider processing requests in smaller batches or with longer intervals between requests."
+    )

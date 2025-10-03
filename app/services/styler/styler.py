@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
+from app.core.retry_utils import RetryHandler, RetryConfig, create_rate_limit_error
 import json
-import time
-import random
 
 
 class Styler(ABC):
@@ -80,59 +79,41 @@ Generate ONLY the JSON response now:"""
         Returns:
             str: Response text from the operation
         """
-        for attempt in range(max_retries):
-            try:
-                # Add a small delay before each request to respect rate limits
-                if attempt > 0:
-                    # Exponential backoff with jitter
-                    delay = base_delay * (2**attempt) + random.uniform(0, 1)
-                    print(
-                        f"Rate limit hit, waiting {delay:.1f} seconds before retry {attempt + 1}/{max_retries}..."
-                    )
-                    time.sleep(delay)
-                else:
-                    # Small delay even on first attempt to be respectful
-                    time.sleep(1)
-
-                # Execute the operation
-                return operation_func()
-
-            except Exception as e:
-                error_message = str(e)
-
-                # Check if it's a rate limit error
-                if self._is_rate_limit_error(error_message):
-                    if attempt < max_retries - 1:
-                        # Will retry on next iteration
-                        continue
-                    else:
-                        # Final attempt failed
-                        return self._create_rate_limit_error_response(max_retries)
-                else:
-                    # Non-rate-limit error, return immediately
-                    return json.dumps(
-                        {"error": f"Failed to generate outfit: {error_message}"}
-                    )
-
-        # This shouldn't be reached, but just in case
-        return json.dumps({"error": "Unexpected error in retry loop"})
+        # Configure retry behavior
+        retry_config = RetryConfig(
+            max_retries=max_retries,
+            base_delay=base_delay,
+            initial_delay=1.0
+        )
+        retry_handler = RetryHandler(retry_config)
+        
+        def error_handler(error_message: str, attempts: int) -> str:
+            """Handle errors from styling operations."""
+            if retry_handler.is_rate_limit_error(error_message):
+                error_response = create_rate_limit_error(attempts)
+                return json.dumps(error_response)
+            else:
+                return json.dumps({"error": f"Failed to generate outfit: {error_message}"})
+        
+        try:
+            return retry_handler.execute_with_retry(
+                operation_func,
+                error_handler,
+                context="outfit styling"
+            )
+        except Exception as e:
+            # Fallback error handling
+            return json.dumps({"error": f"Unexpected error in styling: {str(e)}"})
 
     def _is_rate_limit_error(self, error_message: str) -> bool:
-        """Check if the error is a rate limit error."""
-        return (
-            "429" in error_message
-            or "quota" in error_message.lower()
-            or "rate" in error_message.lower()
-        )
+        """Check if the error is a rate limit error (deprecated - use RetryHandler)."""
+        retry_handler = RetryHandler()
+        return retry_handler.is_rate_limit_error(error_message)
 
     def _create_rate_limit_error_response(self, max_retries: int) -> str:
-        """Create a standardized rate limit error response."""
-        return json.dumps(
-            {
-                "error": f"Rate limit exceeded after {max_retries} attempts. Please wait a few minutes before trying again.",
-                "suggestion": "The API quota may be exceeded. Try again in a few minutes.",
-            }
-        )
+        """Create a standardized rate limit error response (deprecated - use create_rate_limit_error)."""
+        error_response = create_rate_limit_error(max_retries)
+        return json.dumps(error_response)
 
     def _parse_json_response(self, response_text: str) -> str:
         """
