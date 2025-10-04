@@ -7,6 +7,8 @@ from app.services.styler_service import StylerService
 from app.models.response import StylerResponse
 
 
+@pytest.mark.unit
+@pytest.mark.service
 class TestStylerService:
     """Test StylerService functionality"""
 

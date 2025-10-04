@@ -2,6 +2,7 @@ import pytest
 from app.core.config import Settings, settings
 
 
+@pytest.mark.unit
 class TestConfig:
     """Test configuration settings"""
 

@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # Styler configuration
     DEFAULT_STYLER: str = os.getenv(
-        "DEFAULT_STYLER", "gemini"
+        "DEFAULT_STYLER", "openai"
     )  # Options: "gemini" or "openai"
 
     # Server settings

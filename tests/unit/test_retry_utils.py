@@ -10,6 +10,7 @@ from app.core.retry_utils import (
 )
 
 
+@pytest.mark.unit
 class TestRetryConfig:
     """Test RetryConfig class."""
     
@@ -41,6 +42,7 @@ class TestRetryConfig:
         assert config.initial_delay == 0.5
 
 
+@pytest.mark.unit
 class TestRetryHandler:
     """Test RetryHandler class."""
     
@@ -158,6 +160,8 @@ class TestRetryHandler:
         assert result["attempts"] == 3
 
 
+@pytest.mark.unit
+@pytest.mark.error_handling
 class TestErrorResponseHelpers:
     """Test error response helper functions."""
     

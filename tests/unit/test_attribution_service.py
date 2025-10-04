@@ -7,6 +7,8 @@ from app.services.attribution_service import ClothingAttributionService
 from app.models.response import ImageInfo, ImageAnalysisResult
 
 
+@pytest.mark.unit
+@pytest.mark.service
 class TestClothingAttributionService:
     """Test ClothingAttributionService functionality"""
 

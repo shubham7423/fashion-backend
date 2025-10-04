@@ -4,6 +4,8 @@ from unittest.mock import patch, AsyncMock
 from app.main import app
 
 
+@pytest.mark.unit
+@pytest.mark.api
 class TestRoutes:
     """Test API routes"""
 

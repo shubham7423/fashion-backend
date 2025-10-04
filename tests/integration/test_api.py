@@ -3,6 +3,7 @@
 Test script for the Fashion Backend API
 """
 
+import pytest
 import requests
 import json
 from pathlib import Path
@@ -10,6 +11,9 @@ import tempfile
 from PIL import Image
 
 
+@pytest.mark.integration
+@pytest.mark.api
+@pytest.mark.slow
 def create_test_image(color="red", size=(100, 100)):
     """Create a simple test image with specified color"""
     img = Image.new("RGB", size, color=color)
@@ -20,6 +24,9 @@ def create_test_image(color="red", size=(100, 100)):
     return temp_file.name
 
 
+@pytest.mark.integration
+@pytest.mark.api
+@pytest.mark.slow
 def test_api():
     """Test the FastAPI endpoints"""
     base_url = "http://localhost:8000"

@@ -5,6 +5,8 @@ from app.services.attribution.gemini_attributor import GeminiAttributor
 from PIL import Image
 
 
+@pytest.mark.unit
+@pytest.mark.service
 class TestAttributor:
     """Test Attributor base class"""
 
@@ -27,6 +29,9 @@ class TestAttributor:
         assert "primary_color" in prompt
 
 
+@pytest.mark.unit
+@pytest.mark.service
+@pytest.mark.slow
 class TestGeminiAttributor:
     """Test GeminiAttributor functionality"""
 

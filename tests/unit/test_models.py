@@ -9,6 +9,8 @@ from app.models.response import (
 )
 
 
+@pytest.mark.unit
+@pytest.mark.model
 class TestModels:
     """Test Pydantic models"""
 

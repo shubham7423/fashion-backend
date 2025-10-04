@@ -3,6 +3,7 @@
 Test script for the Styler API endpoint
 """
 
+import pytest
 import requests
 import json
 from pathlib import Path
@@ -10,6 +11,9 @@ from pathlib import Path
 TIMEOUT = 10  # seconds for all HTTP requests
 
 
+@pytest.mark.integration
+@pytest.mark.api
+@pytest.mark.slow
 def test_styler_api():
     """Test the Styler endpoint"""
     base_url = "http://localhost:8000"
@@ -114,6 +118,8 @@ def test_styler_api():
     print("Styler API testing complete!")
 
 
+@pytest.mark.integration
+@pytest.mark.api
 def test_health_endpoint():
     """Quick health check"""
     base_url = "http://localhost:8000"
