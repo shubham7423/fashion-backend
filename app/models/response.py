@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -12,17 +12,25 @@ class ImageInfo(BaseModel):
     file_size_mb: float
 
 
+class ImageAnalysisResult(BaseModel):
+    """Analysis result for a single image"""
+
+    image_info: ImageInfo
+    status: str = "ready_for_processing"
+    attributes: Optional[dict] = None
+    error: Optional[str] = None
+
+
 class AttributeAnalysisResponse(BaseModel):
     """Response model for clothing attribute analysis"""
 
     success: bool
     message: str
-    image_info: ImageInfo
     processing_timestamp: str
-    status: str = "ready_for_processing"
-
-    # Placeholder for future attribute analysis results
-    attributes: Optional[dict] = None
+    total_images: int
+    successful_analyses: int
+    failed_analyses: int
+    results: List[ImageAnalysisResult]
 
 
 class HealthResponse(BaseModel):
@@ -30,6 +38,19 @@ class HealthResponse(BaseModel):
 
     status: str
     timestamp: str
+
+
+class StylerResponse(BaseModel):
+    """Response model for outfit styling recommendations"""
+
+    success: bool
+    message: str
+    user_id: str
+    styling_timestamp: str
+    request_parameters: dict
+    outfit_recommendation: Optional[dict] = None
+    available_items_count: int
+    error: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):

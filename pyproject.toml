@@ -1,0 +1,76 @@
+[tool.pytest.ini_options]
+# Pytest configuration for Fashion Backend API
+
+# Test discovery
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*", "*Tests"]
+python_functions = ["test_*"]
+
+# Minimum version
+minversion = "6.0"
+
+# Default options
+addopts = [
+    "-ra",                    # Show extra test summary info for all except passed
+    "--strict-markers",       # Strict marker checking
+    "--strict-config",        # Strict config checking
+    "--tb=short",            # Short traceback format
+    "--disable-warnings",    # Disable warnings for cleaner output
+]
+
+# Test markers (also defined in conftest.py)
+markers = [
+    "unit: Unit tests - fast, isolated, no external dependencies",
+    "integration: Integration tests - test component interactions", 
+    "performance: Performance and load tests",
+    "slow: Slow tests - may involve AI API calls or large files",
+    "api: API endpoint tests",
+    "service: Service layer tests", 
+    "model: Model and validation tests",
+    "error_handling: Error handling and edge case tests",
+    "regression: Regression tests for bug fixes",
+]
+
+# Async test support
+asyncio_mode = "auto"
+
+# Filter warnings
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning:google.*",
+    "ignore::UserWarning:PIL.*",
+]
+
+# Coverage options (when --cov is used)
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+    "*/venv/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = false
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"

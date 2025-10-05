@@ -22,6 +22,7 @@ def create_app() -> FastAPI:
             "version": settings.APP_VERSION,
             "endpoints": {
                 "/api/v1/attribute_clothes": "POST - Process image files for clothing attribute analysis",
+                "/api/v1/styler": "POST - Generate outfit recommendations based on stored clothing attributes",
                 "/api/v1/health": "GET - Health check",
             },
         }
