@@ -9,6 +9,7 @@ import time
 import random
 import json
 from typing import Callable, Any, Optional
+from app.core.logging_config import get_logger
 
 
 class RetryConfig:
@@ -123,48 +124,27 @@ class RetryHandler:
         error_handler: Optional[Callable[[str, int], Any]] = None,
         context: str = "operation"
     ) -> Any:
-        """
-        Execute an operation with retry logic and exponential backoff.
-        
-        Args:
-            operation: Function to execute that may raise exceptions
-            error_handler: Optional function to handle final failure
-            context: Description of the operation for logging
-            
-        Returns:
-            Any: Result from the operation
-            
-        Raises:
-            RetryError: When all retry attempts are exhausted
-        """
+        logger = get_logger(__name__)
         last_error = None
-        
         for attempt in range(self.config.max_retries):
             try:
-                # Calculate and apply delay
                 delay = self.calculate_delay(attempt)
                 if delay > 0:
                     if attempt > 0:
-                        print(
+                        logger.warning(
                             f"Rate limit hit for {context}, waiting {delay:.1f} seconds "
                             f"before retry {attempt + 1}/{self.config.max_retries}..."
                         )
                     time.sleep(delay)
-                
-                # Execute the operation
                 return operation()
-                
             except Exception as e:
                 last_error = e
                 error_message = str(e)
-                
-                # Check if it's a retryable error
                 if self.is_retryable_error(error_message):
                     if attempt < self.config.max_retries - 1:
-                        # Will retry on next iteration
                         continue
                     else:
-                        # Final attempt failed with retryable error
+                        logger.error(f"Rate limit exceeded after {self.config.max_retries} attempts for {context}")
                         if error_handler:
                             return error_handler(error_message, self.config.max_retries)
                         else:
@@ -174,20 +154,19 @@ class RetryHandler:
                                 last_error
                             )
                 else:
-                    # Non-retryable error, fail immediately
                     if error_handler:
                         return error_handler(error_message, attempt + 1)
                     else:
+                        logger.error(f"Non-retryable error in {context}: {error_message}")
                         raise RetryError(
                             f"Non-retryable error in {context}: {error_message}",
                             attempt + 1,
                             last_error
                         )
-        
-        # This shouldn't be reached, but just in case
         if error_handler:
             return error_handler("Unexpected error in retry loop", self.config.max_retries)
         else:
+            logger.error(f"Unexpected error in retry loop for {context}")
             raise RetryError(
                 f"Unexpected error in retry loop for {context}",
                 self.config.max_retries,

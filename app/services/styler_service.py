@@ -5,6 +5,8 @@ from app.models.response import StylerResponse
 from app.services.styler.gemini_styler import GeminiStyler
 from app.services.styler.openai_styler import OpenAIStyler
 from app.core.user_id_utils import normalize_user_id
+from app.core.data_service import get_data_service
+from app.core.logging_config import get_logger
 from datetime import datetime
 from typing import Dict, Any, List
 import json
@@ -30,25 +32,17 @@ class StylerService:
 
     @staticmethod
     def load_user_attributes(user_id: str) -> Dict[str, Any]:
-        """Load user's clothing attributes from their JSON file"""
-        json_file_path = StylerService.get_user_json_file_path(user_id)
-        if not json_file_path.exists():
+        """Load user's clothing attributes using unified data service"""
+        data_service = get_data_service()
+        user_data = data_service.load_user_data(user_id)
+        
+        if not user_data:
             raise HTTPException(
                 status_code=404,
                 detail=f"No clothing data found for user '{user_id}'. Please upload some images first using /attribute_clothes endpoint.",
             )
-        try:
-            with open(json_file_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error reading user data: Invalid JSON format in user's clothing data file.",
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Error loading user data: {str(e)}"
-            )
+        
+        return user_data
 
     @staticmethod
     def extract_clothing_attributes_for_styling(
@@ -90,6 +84,76 @@ class StylerService:
         return styling_attributes
 
     @staticmethod
+    def get_outfit_image_urls(
+        outfit_recommendation: dict, 
+        user_data: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """
+        Generate download URLs for outfit recommendation images.
+        
+        Args:
+            outfit_recommendation: Recommended outfit items
+            user_data: User's stored clothing data
+            
+        Returns:
+            Dictionary mapping item types to download URLs
+        """
+        logger = get_logger(__name__)
+        from app.core.image_storage_service import get_image_storage_service
+        
+        outfit_urls = {}
+        image_storage = get_image_storage_service()
+        images_data = user_data.get("images", {})
+        
+        logger.debug(f"Generating download URLs for outfit items | Available images: {len(images_data)}")
+        
+        # Map outfit items to download URLs
+        outfit_items = {
+            "top": outfit_recommendation.get("top"),
+            "bottom": outfit_recommendation.get("bottom"),
+            "outerwear": outfit_recommendation.get("outerwear"),
+        }
+        
+        for item_type, filename in outfit_items.items():
+            if not filename:
+                logger.debug(f"No {item_type} specified in outfit recommendation")
+                continue
+                
+            logger.debug(f"Looking for download URL for {item_type}: {filename}")
+            
+            # Find the image data by filename
+            found = False
+            for image_hash, image_data in images_data.items():
+                stored_filename = image_data.get("filename", "")
+                saved_images = image_data.get("saved_images", {})
+                
+                # Check if this is the correct image by filename
+                if (stored_filename == filename or 
+                    filename in stored_filename or 
+                    any(filename in path for path in saved_images.values())):
+                    
+                    # Get download URL for processed image
+                    processed_path = saved_images.get("processed")
+                    if processed_path:
+                        download_url = image_storage.get_download_url(processed_path)
+                        if download_url:
+                            outfit_urls[item_type] = download_url
+                            storage_type = "GCS" if download_url.startswith("https://") else "Local"
+                            logger.debug(f"✅ Generated {storage_type} download URL for {item_type}: {filename}")
+                            found = True
+                            break
+                        else:
+                            logger.warning(f"Failed to generate download URL for {item_type}: {filename}")
+                    else:
+                        logger.warning(f"No processed image path found for {item_type}: {filename}")
+            
+            if not found:
+                logger.warning(f"Could not find image data for {item_type}: {filename}")
+        
+        logger.info(f"Generated {len(outfit_urls)} download URLs for outfit items")
+        return outfit_urls
+
+    @staticmethod
     async def generate_outfit_recommendation(
         user_id: str,
         city: str = "Toronto",
@@ -108,16 +172,22 @@ class StylerService:
         Returns:
             StylerResponse with outfit recommendation
         """
+        logger = get_logger(__name__)
+        logger.info(f"[user={user_id}] 👔 Starting outfit recommendation | City: {city} | Weather: {weather} | Occasion: {occasion}")
+        
         try:
             # Load user's clothing data
+            logger.debug(f"[user={user_id}] Loading user clothing data")
             user_data = StylerService.load_user_attributes(user_id)
 
             # Extract clothing attributes for styling
+            logger.debug(f"[user={user_id}] Extracting clothing attributes for styling")
             clothing_attributes = StylerService.extract_clothing_attributes_for_styling(
                 user_data
             )
 
             if not clothing_attributes:
+                logger.warning(f"[user={user_id}] No valid clothing items found")
                 return StylerResponse(
                     success=False,
                     message=f"No valid clothing items found for user '{user_id}'. Please upload some images with valid clothing items first.",
@@ -132,20 +202,27 @@ class StylerService:
                     error="No valid clothing items available for styling",
                 )
 
+            logger.info(f"[user={user_id}] Found {len(clothing_attributes)} clothing items for styling")
+
             # Initialize the styler based on configuration
             try:
-                if settings.DEFAULT_STYLER.lower() == "openai":
+                styler_type = settings.DEFAULT_STYLER.lower()
+                logger.debug(f"[user={user_id}] Initializing {styler_type} styler")
+                
+                if styler_type == "openai":
                     styler = OpenAIStyler()
                 else:
                     # Default to Gemini
                     styler = GeminiStyler()
             except ValueError as e:
+                logger.error(f"[user={user_id}] Styler initialization failed: {e}")
                 raise HTTPException(
                     status_code=500, detail=f"Styler initialization failed: {str(e)}"
                 )
 
             # Generate outfit recommendation
             try:
+                logger.info(f"[user={user_id}] 🧠 Generating AI outfit recommendation using {styler_type}")
                 outfit_json = styler.style(
                     clothing_attributes=clothing_attributes,
                     city=city,
@@ -160,6 +237,22 @@ class StylerService:
                     else outfit_json
                 )
 
+                logger.debug(f"[user={user_id}] AI outfit recommendation generated successfully")
+
+                # Get download URLs for outfit items
+                logger.debug(f"[user={user_id}] Generating download URLs for outfit images")
+                outfit_image_urls = StylerService.get_outfit_image_urls(
+                    outfit_recommendation, user_data
+                )
+
+                # Log the recommended outfit
+                outfit_summary = {
+                    "top": outfit_recommendation.get("top", "None"),
+                    "bottom": outfit_recommendation.get("bottom", "None"),
+                    "outerwear": outfit_recommendation.get("outerwear", "None")
+                }
+                logger.info(f"[user={user_id}] ✅ Outfit recommendation complete | Top: {outfit_summary['top']} | Bottom: {outfit_summary['bottom']} | Outerwear: {outfit_summary['outerwear']} | URLs: {len(outfit_image_urls)}")
+
                 return StylerResponse(
                     success=True,
                     message=f"Outfit recommendation generated successfully for user '{user_id}'",
@@ -172,9 +265,11 @@ class StylerService:
                     },
                     outfit_recommendation=outfit_recommendation,
                     available_items_count=len(clothing_attributes),
+                    outfit_images=outfit_image_urls,
                 )
 
             except Exception as e:
+                logger.error(f"[user={user_id}] Failed to generate outfit recommendation: {e}")
                 return StylerResponse(
                     success=False,
                     message=f"Failed to generate outfit recommendation for user '{user_id}'",
@@ -192,6 +287,7 @@ class StylerService:
         except HTTPException:
             raise
         except Exception as e:
+            logger.error(f"[user={user_id}] Unexpected error in outfit generation: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Unexpected error in outfit generation: {str(e)}",

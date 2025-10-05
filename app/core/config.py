@@ -48,17 +48,31 @@ class Settings(BaseSettings):
     CREATE_USER_SUBDIRS: bool = True  # Create subdirectories for each user
 
     # API keys
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    GEMINI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+
+    # Firebase configuration
+    FIREBASE_SERVICE_ACCOUNT_KEY: str = ""
+    USE_FIREBASE: bool = False
+
+    # Google Cloud Storage configuration
+    USE_GCS: bool = False  # Whether to use GCS for image storage
+    GCS_BUCKET_NAME: str = ""  # GCS bucket name for storing images
+    GCS_SERVICE_ACCOUNT_KEY: str = ""  # Path to GCS service account key file
 
     # Styler configuration
-    DEFAULT_STYLER: str = os.getenv(
-        "DEFAULT_STYLER", "openai"
-    )  # Options: "gemini" or "openai"
+    DEFAULT_STYLER: str = "openai"  # Options: "gemini" or "openai"
 
     # Server settings
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    # Logging settings
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOG_FILE: str = "logs/fashion_backend.log"
+    LOG_TO_CONSOLE: bool = True
+    LOG_MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+    LOG_BACKUP_COUNT: int = 5
 
     class Config:
         env_file = ".env"

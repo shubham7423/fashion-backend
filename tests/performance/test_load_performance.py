@@ -10,10 +10,14 @@ import time
 import asyncio
 import concurrent.futures
 import requests
+import logging
 from pathlib import Path
 import tempfile
 from PIL import Image
 import io
+
+# Setup logging for performance tests
+logger = logging.getLogger(__name__)
 import threading
 from statistics import mean, median, stdev
 from unittest.mock import patch, Mock
