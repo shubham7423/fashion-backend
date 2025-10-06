@@ -32,7 +32,15 @@ class StylerService:
 
     @staticmethod
     def load_user_attributes(user_id: str) -> Dict[str, Any]:
-        """Load user's clothing attributes using unified data service"""
+        """
+        Load a user's stored clothing attributes from the unified data service.
+        
+        Returns:
+            user_data (dict): Dictionary containing the user's clothing attributes and image entries.
+        
+        Raises:
+            HTTPException: 404 if no clothing data is found for the given `user_id`.
+        """
         data_service = get_data_service()
         user_data = data_service.load_user_data(user_id)
         
@@ -48,7 +56,15 @@ class StylerService:
     def extract_clothing_attributes_for_styling(
         user_data: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
-        """Extract only the clothing attributes needed for styling recommendations"""
+        """
+        Builds a filtered list of clothing attribute objects suitable for the styling engine.
+        
+        Parameters:
+            user_data (Dict[str, Any]): User data dictionary expected to contain an "images" mapping where each key is an image hash and each value is an image record that may include an "attributes" dict.
+        
+        Returns:
+            List[Dict[str, Any]]: A list of normalized clothing attribute dictionaries. Each dictionary contains keys: `image`, `identifier`, `category`, `gender`, `primary_color`, `style`, `occasion`, `weather`, `fit`, and `description`. Items with missing `identifier` or `category` are excluded.
+        """
         styling_attributes = []
 
         images_data = user_data.get("images", {})
@@ -89,14 +105,14 @@ class StylerService:
         user_data: Dict[str, Any]
     ) -> Dict[str, str]:
         """
-        Generate download URLs for outfit recommendation images.
+        Build download URLs for images referenced in an outfit recommendation.
         
-        Args:
-            outfit_recommendation: Recommended outfit items
-            user_data: User's stored clothing data
-            
+        Parameters:
+            outfit_recommendation (dict): Recommendation containing keys like `"top"`, `"bottom"`, and `"outerwear"` whose values are filenames or identifiers for recommended items.
+            user_data (Dict[str, Any]): User data containing an `"images"` mapping where each image entry may include `filename` and `saved_images` (with a `processed` path).
+        
         Returns:
-            Dictionary mapping item types to download URLs
+            Dict[str, str]: Mapping from item type (`"top"`, `"bottom"`, `"outerwear"`) to a downloadable image URL for the processed image. Items without a matching processed image are omitted.
         """
         logger = get_logger(__name__)
         from app.core.image_storage_service import get_image_storage_service
@@ -161,16 +177,19 @@ class StylerService:
         occasion: str = "casual day out",
     ) -> StylerResponse:
         """
-        Generate outfit recommendation for the user based on their clothing attributes
-
-        Args:
-            user_id: Unique identifier for the user
-            city: City for the occasion (default: "Toronto")
-            weather: Weather conditions (default: fall weather)
-            occasion: The occasion type (default: "casual day out")
-
+        Produce an outfit recommendation and related metadata for a user based on their stored clothing attributes, location, weather, and occasion.
+        
+        Parameters:
+        	user_id (str): Unique identifier of the user whose wardrobe will be used for recommendations.
+        	city (str): City context for the recommendation (defaults to "Toronto").
+        	weather (str): Description of weather conditions to inform styling (defaults to an early fall description).
+        	occasion (str): Occasion or event to tailor the outfit (defaults to "casual day out").
+        
         Returns:
-            StylerResponse with outfit recommendation
+        	StylerResponse: Response object containing success status, human-readable message, user_id, styling timestamp, the request parameters, the generated outfit recommendation (if successful), count of available styling items, outfit image download URLs (if available), and an error message when applicable.
+        
+        Raises:
+        	HTTPException: Propagates HTTP errors (e.g., 404 when user data is missing) and raises HTTP 500 for unexpected failures during processing.
         """
         logger = get_logger(__name__)
         logger.info(f"[user={user_id}] 👔 Starting outfit recommendation | City: {city} | Weather: {weather} | Occasion: {occasion}")

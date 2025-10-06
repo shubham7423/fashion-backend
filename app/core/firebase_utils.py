@@ -39,7 +39,11 @@ class FirebaseService:
         self._initialize_firebase()
     
     def _initialize_firebase(self):
-        """Initialize Firebase Admin SDK."""
+        """
+        Set up the Firebase Admin SDK and obtain a Firestore client for this service.
+        
+        Initializes Firebase using the service account key path from settings.FIREBASE_SERVICE_ACCOUNT_KEY when that file exists; otherwise attempts to initialize with default credentials. If Firebase is already initialized, reuses the existing app. On successful initialization assigns the Firestore client to self._db and sets self._initialized to True. On failure leaves self._initialized False.
+        """
         try:
             # Check if Firebase is already initialized
             if firebase_admin._apps:
@@ -75,19 +79,28 @@ class FirebaseService:
     
     @property
     def is_available(self) -> bool:
-        """Check if Firebase is available and initialized."""
+        """
+        Check whether Firebase is ready for use.
+        
+        Returns:
+            `true` if the Firebase Admin SDK is present, initialization has completed, and a Firestore client is available; `false` otherwise.
+        """
         return FIREBASE_AVAILABLE and self._initialized and self._db is not None
     
     def store_user_data(self, user_id: str, data: Dict[str, Any]) -> bool:
         """
-        Store user data in Firebase Firestore.
+        Store or merge the given user data into the Firestore 'users' collection.
         
-        Args:
-            user_id: Unique identifier for the user
-            data: Dictionary containing user data to store
-            
+        Parameters:
+            user_id (str): Identifier for the user; will be trimmed and lowercased for the document ID.
+            data (Dict[str, Any]): JSON-serializable mapping of fields to store; fields are merged into the existing document.
+        
         Returns:
-            bool: True if successful, False otherwise
+            bool: `true` if the data was written successfully, `false` otherwise.
+        
+        Notes:
+            - Adds or updates a `last_updated` timestamp and a normalized `user_id` field in the stored document.
+            - Uses merge semantics so provided fields are merged with existing document data.
         """
         if not self.is_available:
             logger.warning("Firebase not available, cannot store data")
@@ -119,13 +132,13 @@ class FirebaseService:
     
     def get_user_data(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieve user data from Firebase Firestore.
+        Retrieve a user's stored Firestore document from the 'users' collection.
         
-        Args:
-            user_id: Unique identifier for the user
-            
+        Parameters:
+            user_id (str): User identifier; will be normalized to lowercase and trimmed before lookup.
+        
         Returns:
-            Dict containing user data if found, None otherwise
+            dict: The user's stored data as a dictionary, or `None` if the document does not exist, Firebase is unavailable, or an error occurs.
         """
         if not self.is_available:
             logger.warning("Firebase not available, cannot retrieve data")
@@ -153,15 +166,17 @@ class FirebaseService:
     
     def update_user_images(self, user_id: str, image_hash: str, image_data: Dict[str, Any]) -> bool:
         """
-        Update or add image data for a user.
+        Update or add image metadata for a user in Firestore.
         
-        Args:
-            user_id: Unique identifier for the user
-            image_hash: Unique hash for the image
-            image_data: Dictionary containing image attributes and metadata
-            
+        Stores the provided image data under the user's `images.{image_hash}` field and updates the user's last-updated timestamp.
+        
+        Parameters:
+            user_id (str): User identifier (will be normalized to a consistent document ID).
+            image_hash (str): Unique hash identifying the image; used as the key within the user's images map.
+            image_data (Dict[str, Any]): Attributes and metadata for the image to store.
+        
         Returns:
-            bool: True if successful, False otherwise
+            bool: `true` if the update succeeded, `false` otherwise.
         """
         if not self.is_available:
             logger.warning("Firebase not available, cannot update images")
@@ -189,13 +204,15 @@ class FirebaseService:
     
     def delete_user_data(self, user_id: str) -> bool:
         """
-        Delete user data from Firebase Firestore.
+        Deletes a user's document from the Firestore 'users' collection.
         
-        Args:
-            user_id: Unique identifier for the user
-            
+        The provided `user_id` is normalized to lowercase and trimmed before locating the document. If Firebase is not available or an error occurs, the operation will fail safely.
+        
+        Parameters:
+            user_id (str): Unique identifier for the user; will be normalized to lowercase and trimmed.
+        
         Returns:
-            bool: True if successful, False otherwise
+            True if deletion succeeded, False otherwise.
         """
         if not self.is_available:
             logger.warning("Firebase not available, cannot delete data")
@@ -216,13 +233,13 @@ class FirebaseService:
     
     def list_users(self, limit: int = 50) -> List[str]:
         """
-        List all user IDs in the database.
+        Retrieve up to `limit` user document IDs from the 'users' collection.
         
-        Args:
-            limit: Maximum number of users to return
-            
+        Parameters:
+            limit (int): Maximum number of user IDs to return.
+        
         Returns:
-            List of user IDs
+            List[str]: A list of user document IDs (may be empty).
         """
         if not self.is_available:
             logger.warning("Firebase not available, cannot list users")
@@ -240,14 +257,16 @@ class FirebaseService:
     
     def backup_to_json(self, user_id: str, file_path: str) -> bool:
         """
-        Backup user data from Firebase to a local JSON file.
+        Write a user's Firestore document to a local JSON file.
         
-        Args:
-            user_id: Unique identifier for the user
-            file_path: Path where to save the JSON backup
-            
+        If no data exists for the given user, the function returns False. The function ensures the target directory exists and serializes Firestore timestamp-like values as strings when writing JSON.
+        
+        Parameters:
+            user_id (str): Identifier of the user whose data will be backed up.
+            file_path (str): Destination file path (including filename) for the JSON backup.
+        
         Returns:
-            bool: True if successful, False otherwise
+            bool: `True` if the user data was successfully written to the file, `False` otherwise.
         """
         logger.info(f"Backing up user {user_id} to {file_path}")
         data = self.get_user_data(user_id)
@@ -258,6 +277,15 @@ class FirebaseService:
         try:
             # Convert Firestore timestamps to strings for JSON serialization
             def convert_timestamps(obj):
+                """
+                Extracts a timestamp value from an object when available.
+                
+                Parameters:
+                    obj: The object to inspect; if it has a `timestamp` attribute callable as `obj.timestamp()`, that call's result is returned.
+                
+                Returns:
+                    The value returned by `obj.timestamp()` when `obj` provides that method, otherwise the original `obj`.
+                """
                 if hasattr(obj, 'timestamp'):
                     return obj.timestamp()
                 return obj
@@ -277,14 +305,14 @@ class FirebaseService:
     
     def restore_from_json(self, user_id: str, file_path: str) -> bool:
         """
-        Restore user data from a local JSON file to Firebase.
+        Restore a user's Firestore document from a local JSON file.
         
-        Args:
-            user_id: Unique identifier for the user
-            file_path: Path to the JSON file to restore
-            
+        Parameters:
+            user_id (str): Identifier of the user whose document will be restored.
+            file_path (str): Path to the local JSON file containing the user data.
+        
         Returns:
-            bool: True if successful, False otherwise
+            `true` if the user data was stored successfully in Firestore, `false` otherwise.
         """
         logger.info(f"Restoring user {user_id} from {file_path}")
         try:
@@ -310,5 +338,10 @@ firebase_service = FirebaseService()
 
 
 def get_firebase_service() -> FirebaseService:
-    """Get the global Firebase service instance."""
+    """
+    Return the module-level FirebaseService singleton.
+    
+    Returns:
+        firebase_service (FirebaseService): The shared FirebaseService instance used for Firestore operations.
+    """
     return firebase_service

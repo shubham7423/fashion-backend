@@ -26,11 +26,24 @@ class ClothingAttributionService:
     """Service for processing and analyzing clothing images"""
 
     def __init__(self):
+        """
+        Initialize the ClothingAttributionService instance.
+        
+        Sets up an instance logger on self.logger for use by other methods.
+        """
         self.logger = get_logger(__name__)
 
     @staticmethod
     def validate_image_file(file: UploadFile) -> bool:
-        """Validate if the uploaded file is a valid image"""
+        """
+        Determine whether an uploaded file is an acceptable image for processing.
+        
+        Parameters:
+            file (UploadFile): The uploaded file to validate.
+        
+        Returns:
+            bool: `true` if the file has a filename, its extension is in settings.ALLOWED_EXTENSIONS, and its content type starts with "image/"; `false` otherwise.
+        """
         if not file.filename:
             return False
 
@@ -188,15 +201,15 @@ class ClothingAttributionService:
         image: Image.Image, unique_filename: str, user_id: str = None
     ) -> str:
         """
-        Save processed image using the unified image storage service.
+        Save a processed PIL Image via the configured image storage service.
         
-        Args:
-            image: PIL Image object to save
-            unique_filename: Unique filename for the image
-            user_id: User ID for organizing images
-            
+        Parameters:
+            image (PIL.Image.Image): Image to store.
+            unique_filename (str): Filename to use when saving the image.
+            user_id (str, optional): Optional user identifier to scope the storage location.
+        
         Returns:
-            Storage path/URL if successful, None otherwise
+            str | None: Storage path or URL if saved successfully, `None` otherwise.
         """
         image_storage = get_image_storage_service()
         return image_storage.save_processed_image(image, unique_filename, user_id)
@@ -204,13 +217,15 @@ class ClothingAttributionService:
     @staticmethod
     def get_user_json_file_path(user_id: str) -> Path:
         """
-        Get the path to the user-specific JSON file
-
-        Args:
-            user_id: User identifier
-
+        Return the filesystem path for a user's attributes JSON file.
+        
+        Normalizes `user_id` using the configured `USER_DATA_DIRECTORY`. If `CREATE_USER_SUBDIRS` is enabled, ensures the user subdirectory exists and returns the path to `ATTRIBUTES_JSON_FILE` inside that directory. Otherwise returns a root-level path using a filename prefixed with the normalized `user_id`.
+        
+        Parameters:
+            user_id (str): The user identifier to normalize and use in the path.
+        
         Returns:
-            Path to the user's JSON file
+            Path: Path to the user's attributes JSON file.
         """
         # Normalize and validate user_id
         user_id = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
@@ -238,6 +253,21 @@ class ClothingAttributionService:
 
     @staticmethod
     def load_existing_attributes(user_id: str) -> Dict[str, Any]:
+        """
+        Load a user's saved clothing-attribute data or return an initialized empty structure.
+        
+        Parameters:
+            user_id (str): Identifier for the user; will be normalized before lookup.
+        
+        Returns:
+            Dict[str, Any]: Existing user data loaded from the data service if present.
+            If no data exists, returns a dictionary with:
+              - "images": an empty mapping for image entries
+              - "metadata": a mapping with keys:
+                  - "total_images" (int): 0
+                  - "last_updated" (optional[str]): None
+                  - "user_id" (str): the provided user_id
+        """
         logger = get_logger(__name__)
         user_id_norm = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
         data_service = get_data_service()
@@ -259,6 +289,20 @@ class ClothingAttributionService:
         user_id: str,
         saved_paths: Dict[str, str] = None,
     ):
+        """
+        Persist clothing attributes and related image metadata for a user.
+        
+        If settings.SAVE_ATTRIBUTES_JSON is False, the function logs and returns without persisting.
+        The function updates the user's stored attributes by adding or replacing the entry keyed by `image_hash`,
+        updates metadata (total_images, last_updated, user_id), and delegates persistence to the configured data service.
+        
+        Parameters:
+            image_hash (str): SHA-256 hash identifying the image.
+            attributes (Dict[str, Any]): Extracted clothing attribute data to store for the image.
+            image_info (ImageInfo): Metadata about the image (filename, content type, size).
+            user_id (str): Identifier for the user whose attributes are being saved.
+            saved_paths (Dict[str, str], optional): Mapping of saved image variants to their storage paths or URLs; included in the stored entry when provided.
+        """
         logger = get_logger(__name__)
         if not settings.SAVE_ATTRIBUTES_JSON:
             logger.info(f"[user={user_id}] Skipping attribute save (SAVE_ATTRIBUTES_JSON is False)")
@@ -292,6 +336,16 @@ class ClothingAttributionService:
     def is_duplicate_image(
         image_hash: str, user_id: str
     ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Check whether the provided image hash already exists for the given user.
+        
+        Parameters:
+            image_hash (str): SHA-256 hash of the image to check.
+            user_id (str): User identifier; it will be normalized (using USER_DATA_DIRECTORY) before lookup.
+        
+        Returns:
+            Tuple[bool, Dict[str, Any]]: `True` if the image hash exists for the normalized user, `False` otherwise. When `True`, the dict is the existing stored image entry; when `False`, the dict is empty.
+        """
         logger = get_logger(__name__)
         user_id_norm = normalize_user_id(user_id, base_dir=settings.USER_DATA_DIRECTORY)
         if not settings.AVOID_DUPLICATES:
@@ -309,6 +363,25 @@ class ClothingAttributionService:
         files: List[UploadFile],
         user_id: str,
     ) -> AttributeAnalysisResponse:
+        """
+        Process a batch of uploaded image files to extract clothing attributes and return per-image analysis results.
+        
+        This routine validates inputs, enforces a per-batch file limit, normalizes the user identifier, and processes each image via the single-image analysis workflow. It aggregates per-image ImageAnalysisResult objects into an AttributeAnalysisResponse containing batch-level metadata.
+        
+        Parameters:
+            files (List[UploadFile]): List of uploaded image files to analyze.
+            user_id (str): Identifier for the user; must be a non-empty string and will be normalized for storage and lookup.
+        
+        Returns:
+            AttributeAnalysisResponse: Aggregated batch result containing:
+                - success: `true` if at least one image was processed successfully, `false` otherwise.
+                - message: Human-readable summary of the batch outcome.
+                - processing_timestamp: ISO-formatted timestamp when processing completed.
+                - total_images: Total number of files attempted.
+                - successful_analyses: Number of images processed without errors.
+                - failed_analyses: Number of images that failed processing.
+                - results: List of per-image ImageAnalysisResult entries with attributes, status, error, and optional image URL.
+        """
         logger = get_logger(__name__)
         logger.info(f"[user={user_id}] 📸 Starting batch attribute analysis | {len(files)} files | Storage: {'GCS' if settings.USE_GCS else 'Local'}")
         
@@ -409,6 +482,21 @@ class ClothingAttributionService:
     async def process_single_image_analysis(
         file: UploadFile, user_id: str
     ) -> ImageAnalysisResult:
+        """
+        Process a single uploaded image: validate, deduplicate, preprocess, extract clothing attributes, persist results, and return an analysis result.
+        
+        Parameters:
+            file (UploadFile): The uploaded image file to analyze.
+            user_id (str): Identifier for the user requesting the analysis; used for per-user deduplication and storage.
+        
+        Returns:
+            ImageAnalysisResult: Result object describing the outcome. The `status` field will be one of:
+                - "attributes_extracted": attributes were successfully extracted and persisted.
+                - "duplicate_found": an existing image for this user was detected; returned attributes are from the existing entry.
+                - "attributes_failed": attribute extraction completed but returned an error or invalid format.
+                - "error": processing failed due to an unexpected exception.
+            The result may include `attributes` (extracted or existing), an optional `image_url` for a saved processed image, and `error` text when applicable.
+        """
         logger = get_logger(__name__)
         logger.info(f"[user={user_id}] Starting image analysis for: {file.filename}")
         saved_paths = {}
@@ -585,6 +673,17 @@ class ClothingAttributionService:
     async def extract_clothing_attributes(
         image: Image.Image, image_filename: str = None
     ) -> Dict[str, Any]:
+        """
+        Extract clothing attributes from a PIL Image using the Gemini AI attributor.
+        
+        Runs the Gemini attributor to obtain clothing-related attributes and augments the result with processing metadata including final image dimensions, extraction method, and model identifier.
+        
+        Parameters:
+            image_filename (str, optional): Original filename to include in extraction context and logging; may be omitted.
+        
+        Returns:
+            Dict[str, Any]: A dictionary of extracted attributes. On success, contains attribute keys (e.g., `category`, `clothing_type`, `primary_color`) plus a `processing_metadata` object with `processed_image_dimensions`, `extraction_method`, and `model`. On failure, contains an `error` message and a `fallback_data` object with safe default attribute values and `image_dimensions`.
+        """
         logger = get_logger(__name__)
         logger.debug(f"🧠 Starting AI attribute extraction | Image: {image_filename} | Size: {image.size}")
         
