@@ -103,11 +103,14 @@ class GCSService:
         try:
             # Convert PIL image to bytes
             img_buffer = io.BytesIO()
+            image_to_save = image
+            if format.upper() == "JPEG" and image.mode not in ("RGB", "L"):
+                image_to_save = image.convert("RGB")    
             if format.upper() == "JPEG":
-                image.save(img_buffer, format=format, quality=quality, optimize=True)
+                image_to_save.save(img_buffer, format=format, quality=quality, optimize=True)
             else:
-                image.save(img_buffer, format=format, optimize=True)
-            
+                image_to_save.save(img_buffer, format=format, optimize=True)
+
             img_buffer.seek(0)
             
             # Create blob and upload

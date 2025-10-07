@@ -23,8 +23,11 @@ class UnifiedDataService:
     def __init__(self):
         """Initialize the service."""
         self.firebase_service = get_firebase_service()
-        self.use_firebase = settings.USE_FIREBASE and self.firebase_service.is_available
-        
+        firebase_available = (
+            self.firebase_service is not None and self.firebase_service.is_available
+        )
+        self.use_firebase = settings.USE_FIREBASE and firebase_available
+
         if self.use_firebase:
             logger.info("Using Firebase for data storage")
         else:
@@ -146,7 +149,7 @@ class UnifiedDataService:
         Returns:
             bool: True if successful, False otherwise
         """
-        if not self.firebase_service.is_available:
+        if not self.firebase_service or not self.firebase_service.is_available:
             logger.warning("Firebase not available for migration")
             return False
         
@@ -172,7 +175,7 @@ class UnifiedDataService:
         Returns:
             bool: True if successful, False otherwise
         """
-        if not self.firebase_service.is_available:
+        if not self.firebase_service or not self.firebase_service.is_available:
             logger.warning("Firebase not available for backup")
             return False
         

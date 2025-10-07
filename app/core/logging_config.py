@@ -5,7 +5,7 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, ClassVar
 from app.core.config import settings
 
 
@@ -13,7 +13,7 @@ class ColoredFormatter(logging.Formatter):
     """Custom formatter with color support for console output."""
     
     # ANSI color codes
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         'DEBUG': '\033[36m',     # Cyan
         'INFO': '\033[32m',      # Green
         'WARNING': '\033[33m',   # Yellow

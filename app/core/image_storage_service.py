@@ -124,8 +124,8 @@ class ImageStorageService:
             file_path = Path(unique_filename)
             processed_filename = f"{file_path.stem}_processed.jpg"
             file_path = processed_dir / processed_filename
-            
-            image.save(
+            image_to_save = image if image.mode in ("RGB", "L") else image.convert("RGB") 
+            image_to_save.save(
                 file_path, 
                 format="JPEG", 
                 quality=settings.JPEG_QUALITY, 
