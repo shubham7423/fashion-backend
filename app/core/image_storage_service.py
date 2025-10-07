@@ -20,7 +20,11 @@ class ImageStorageService:
     """Service for storing and retrieving images using either local storage or GCS."""
     
     def __init__(self):
-        """Initialize the image storage service."""
+        """
+        Selects and configures the storage backend (Google Cloud Storage or local filesystem) for the service.
+        
+        If GCS is configured and available, initializes `self.gcs_service` and enables GCS storage; otherwise falls back to local filesystem storage. Sets `self.use_gcs` to reflect the chosen backend and logs the outcome.
+        """
         self.use_gcs = settings.USE_GCS and bool(settings.GCS_BUCKET_NAME)
         
         if self.use_gcs:
@@ -41,15 +45,15 @@ class ImageStorageService:
         user_id: str = None
     ) -> Optional[str]:
         """
-        Save a processed image using the configured storage backend.
+        Save a processed PIL Image to the configured storage backend (GCS or local filesystem).
         
-        Args:
-            image: PIL Image object to save
-            unique_filename: Unique filename for the image
-            user_id: User ID for organizing images
-            
+        Parameters:
+            image (PIL.Image.Image): The processed image to save.
+            unique_filename (str): Filename to use for the stored image (without storage path).
+            user_id (str, optional): Identifier used to namespace the image when per-user subdirectories are enabled.
+        
         Returns:
-            Storage path/URL if successful, None otherwise
+            saved_path (Optional[str]): The storage path or URL of the saved image on success, `None` on failure or when saving is disabled.
         """
         if not settings.SAVE_IMAGES or not settings.SAVE_PROCESSED:
             logger.info(f"[user={user_id}] Skipping image save (SAVE_IMAGES or SAVE_PROCESSED is False)")
@@ -66,7 +70,19 @@ class ImageStorageService:
         unique_filename: str, 
         user_id: str = None
     ) -> Optional[str]:
-        """Save image to Google Cloud Storage."""
+        """
+        Save a processed image to Google Cloud Storage and return its GCS URL.
+        
+        Saves the provided PIL Image as a JPEG into the configured GCS bucket, optionally placing it under a per-user subdirectory when user ID subdirectories are enabled. The uploaded object includes metadata with the uploader identifier, the original filename, the processed filename, and the user ID.
+        
+        Parameters:
+            image (Image.Image): The PIL image to upload (will be encoded as JPEG).
+            unique_filename (str): Original or unique filename used to derive the stored processed filename.
+            user_id (str, optional): Identifier for the uploading user; used for metadata and optional namespacing.
+        
+        Returns:
+            Optional[str]: The gs:// URL of the uploaded object if successful, `None` on failure.
+        """
         try:
             # Create GCS blob path
             file_path = Path(unique_filename)
@@ -114,7 +130,19 @@ class ImageStorageService:
         unique_filename: str, 
         user_id: str = None
     ) -> Optional[str]:
-        """Save image to local filesystem."""
+        """
+        Save a processed PIL image to the local images directory for a user.
+        
+        The image is written as a JPEG file named "<original_stem>_processed.jpg" inside the user's processed images directory. If saved successfully, returns the filesystem path to the saved file as a string.
+        
+        Parameters:
+            image (PIL.Image.Image): The image to save.
+            unique_filename (str): Original filename used to derive the processed filename (stem is preserved).
+            user_id (str, optional): Identifier for the user; determines the user-specific images directory when provided.
+        
+        Returns:
+            saved_path (str or None): Filesystem path of the saved JPEG on success, `None` on failure.
+        """
         try:
             # Use the existing local storage logic
             from app.services.attribution_service import ClothingAttributionService
@@ -141,13 +169,13 @@ class ImageStorageService:
     
     def get_image(self, image_path: str) -> Optional[bytes]:
         """
-        Retrieve image bytes from storage.
+        Retrieve image bytes for the given storage path or URL.
         
-        Args:
-            image_path: Local path or GCS URL
-            
+        Parameters:
+            image_path (str): Local filesystem path or a GCS URL beginning with "gs://".
+        
         Returns:
-            Image bytes if found, None otherwise
+            bytes or None: `bytes` of the image if found, `None` otherwise.
         """
         if image_path.startswith("gs://"):
             return self._get_from_gcs(image_path)
@@ -155,7 +183,15 @@ class ImageStorageService:
             return self._get_from_local(image_path)
     
     def _get_from_gcs(self, gcs_url: str) -> Optional[bytes]:
-        """Get image from GCS."""
+        """
+        Retrieve image bytes from Google Cloud Storage for the given GCS URL.
+        
+        Parameters:
+            gcs_url (str): GCS path in the form "gs://{bucket}/path/to/blob". The bucket portion must match the configured GCS bucket.
+        
+        Returns:
+            bytes | None: Image bytes if the blob is found and downloaded, `None` on error or if retrieval fails.
+        """
         try:
             # Extract blob name from GCS URL
             # gs://bucket-name/path/to/file.jpg -> path/to/file.jpg
@@ -166,7 +202,12 @@ class ImageStorageService:
             return None
     
     def _get_from_local(self, file_path: str) -> Optional[bytes]:
-        """Get image from local filesystem."""
+        """
+        Retrieve the raw bytes of an image file from the local filesystem.
+        
+        Returns:
+            image_bytes (bytes): Contents of the file as bytes if the file exists and is readable, `None` otherwise.
+        """
         try:
             path = Path(file_path)
             if path.exists():
@@ -180,13 +221,13 @@ class ImageStorageService:
     
     def delete_image(self, image_path: str) -> bool:
         """
-        Delete an image from storage.
+        Remove an image identified by a local filesystem path or a GCS URL from storage.
         
-        Args:
-            image_path: Local path or GCS URL
-            
+        Parameters:
+            image_path (str): Path to the image; either a local file path or a GCS URL starting with "gs://".
+        
         Returns:
-            True if successful, False otherwise
+            bool: `True` if the image was deleted, `False` otherwise.
         """
         if image_path.startswith("gs://"):
             return self._delete_from_gcs(image_path)
@@ -194,7 +235,15 @@ class ImageStorageService:
             return self._delete_from_local(image_path)
     
     def _delete_from_gcs(self, gcs_url: str) -> bool:
-        """Delete image from GCS."""
+        """
+        Delete the object in Google Cloud Storage identified by the given GCS URL.
+        
+        Parameters:
+            gcs_url (str): GCS object identifier, typically a full URL starting with "gs://{bucket}/" or a blob path that includes the bucket prefix.
+        
+        Returns:
+            bool: `True` if the image was deleted, `False` otherwise.
+        """
         try:
             blob_name = gcs_url.replace(f"gs://{settings.GCS_BUCKET_NAME}/", "")
             return self.gcs_service.delete_image(blob_name)
@@ -203,7 +252,12 @@ class ImageStorageService:
             return False
     
     def _delete_from_local(self, file_path: str) -> bool:
-        """Delete image from local filesystem."""
+        """
+        Deletes the file at file_path from the local filesystem.
+        
+        Returns:
+            bool: `True` if the file was deleted, `False` if the file did not exist or if an error occurred during deletion.
+        """
         try:
             path = Path(file_path)
             if path.exists():
@@ -219,13 +273,13 @@ class ImageStorageService:
     
     def list_user_images(self, user_id: str) -> list:
         """
-        List all images for a user.
+        Return all image paths or URLs associated with the given user.
         
-        Args:
-            user_id: User identifier
-            
+        Parameters:
+        	user_id (str): Identifier of the user whose images to list.
+        
         Returns:
-            List of image paths/URLs
+        	list: A list of image paths (local filesystem paths) or GCS URLs for the user's images.
         """
         if self.use_gcs:
             return self._list_from_gcs(user_id)
@@ -233,7 +287,17 @@ class ImageStorageService:
             return self._list_from_local(user_id)
     
     def _list_from_gcs(self, user_id: str) -> list:
-        """List user images from GCS."""
+        """
+        List image objects in Google Cloud Storage for a given user and return their GCS URLs.
+        
+        If user subdirectories are enabled, the user_id is normalized and used as a prefix (normalized_user_id/processed/); otherwise the prefix is "processed/". Converts found blob names to full `gs://{bucket}/{blob}` URLs. Returns an empty list if an error occurs or no images are found.
+        
+        Parameters:
+            user_id (str): Identifier of the user whose images should be listed; used for prefixing and normalization when configured.
+        
+        Returns:
+            list: A list of GCS URLs (strings) for the user's processed images, or an empty list on failure.
+        """
         try:
             if settings.CREATE_USER_SUBDIRS:
                 from app.core.user_id_utils import normalize_user_id
@@ -250,7 +314,15 @@ class ImageStorageService:
             return []
     
     def _list_from_local(self, user_id: str) -> list:
-        """List user images from local filesystem."""
+        """
+        List image file paths for a user's processed local images.
+        
+        Parameters:
+            user_id (str): Identifier of the user whose images directory will be searched.
+        
+        Returns:
+            list: File system paths (strings) to JPEG files found in the user's "processed" directory; returns an empty list if no images are found or an error occurs.
+        """
         try:
             from app.services.attribution_service import ClothingAttributionService
             
@@ -268,14 +340,14 @@ class ImageStorageService:
     
     def get_download_url(self, image_path: str, expiration_minutes: int = 60) -> Optional[str]:
         """
-        Get a download URL for an image.
+        Return a downloadable URL or path for the specified image.
         
-        Args:
-            image_path: Local path or GCS URL/blob name
-            expiration_minutes: URL expiration time in minutes (for GCS signed URLs)
-            
+        Parameters:
+            image_path (str): A GCS URL (`gs://bucket/blob`), a GCS blob name, or a local file path.
+            expiration_minutes (int): Expiration time in minutes for generated signed URLs (GCS only).
+        
         Returns:
-            Download URL if available, None otherwise
+            str: A signed GCS URL when using GCS, a local-serveable path string for local storage (prefixed with `/images/` if relative), or `None` if `image_path` is empty.
         """
         if not image_path:
             return None
@@ -299,7 +371,24 @@ class ImageStorageService:
             return f"/images/{image_path}" if not image_path.startswith("/") else image_path
 
     def get_storage_info(self) -> Dict[str, Any]:
-        """Get information about the current storage configuration."""
+        """
+        Return a dictionary describing the active image storage configuration.
+        
+        The returned dictionary includes:
+        - storage_type: "gcs" or "local".
+        - save_images: whether images are saved (from settings).
+        - save_processed: whether processed images are saved (from settings).
+        If using GCS:
+        - gcs_bucket: the configured GCS bucket name.
+        - gcs_available: whether the GCS service is currently available.
+        If using local storage:
+        - images_directory: configured local images directory path.
+        - user_data_directory: configured user data directory path.
+        - create_user_subdirs: whether user subdirectories are created.
+        
+        Returns:
+            info (Dict[str, Any]): Mapping of storage configuration keys to their current values.
+        """
         info = {
             "storage_type": "gcs" if self.use_gcs else "local",
             "save_images": settings.SAVE_IMAGES,
@@ -325,7 +414,12 @@ class ImageStorageService:
 _image_storage_service = None
 
 def get_image_storage_service() -> ImageStorageService:
-    """Get the global image storage service instance."""
+    """
+    Return the global singleton ImageStorageService instance.
+    
+    Returns:
+        ImageStorageService: The module-level singleton instance created on first access if not already initialized.
+    """
     global _image_storage_service
     
     if _image_storage_service is None:

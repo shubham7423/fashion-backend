@@ -21,7 +21,16 @@ logger = logging.getLogger(__name__)
 
 
 def run_pytest(args_list, description="Running tests"):
-    """Run pytest with given arguments."""
+    """
+    Execute pytest with the supplied pytest CLI arguments and log start, success, and error outcomes.
+    
+    Parameters:
+        args_list (list[str]): Additional arguments passed to the pytest command (e.g., markers, paths, flags).
+        description (str): Human-readable description used in log messages for this test run.
+    
+    Returns:
+        int: The pytest process exit code; returns `1` if pytest is not found or an error occurs while invoking it.
+    """
     logger.info(f"Starting: {description}")
     try:
         result = subprocess.run(
@@ -44,6 +53,14 @@ def run_pytest(args_list, description="Running tests"):
 
 
 def main():
+    """
+    Parse command-line options, construct pytest arguments based on the selected test category, markers, coverage and output flags, and execute the tests.
+    
+    The function supports selecting test groups (unit, integration, performance, slow), marker-based filters (api, service, model, error-handling), running specific files or patterns, enabling coverage (including HTML report), and controlling verbosity and failed-first ordering.
+    
+    Returns:
+        int: Exit code from the test run; `0` indicates success, non-zero indicates failure.
+    """
     parser = argparse.ArgumentParser(description="Fashion Backend API Test Runner")
     
     # Test category options

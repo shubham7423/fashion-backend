@@ -21,7 +21,15 @@ class UnifiedDataService:
     """Service that can use either local JSON or Firebase for data storage."""
     
     def __init__(self):
-        """Initialize the service."""
+        """
+        Initialize the UnifiedDataService and select the storage backend.
+        
+        Sets the following instance attributes:
+        - `firebase_service`: the Firebase service client (obtained from get_firebase_service()).
+        - `use_firebase`: whether Firebase will be used for storage (based on settings and service availability).
+        
+        Logs which backend (Firebase or local JSON files) will be used.
+        """
         self.firebase_service = get_firebase_service()
         firebase_available = (
             self.firebase_service is not None and self.firebase_service.is_available
@@ -34,7 +42,19 @@ class UnifiedDataService:
             logger.info("Using local JSON files for data storage")
     
     def get_user_json_file_path(self, user_id: str) -> Path:
-        """Get the path to user's JSON file (for local storage)."""
+        """
+        Return the filesystem path to the JSON file used to store the given user's data.
+        
+        The returned path is built from a normalized user identifier. If settings.CREATE_USER_SUBDIRS is true,
+        the file will be located at USER_DATA_DIRECTORY/<normalized_user_id>/<ATTRIBUTES_JSON_FILE>; otherwise
+        the file will be named <normalized_user_id>_<ATTRIBUTES_JSON_FILE> in the current working directory.
+        
+        Parameters:
+            user_id (str): The user identifier to normalize and use when constructing the filename.
+        
+        Returns:
+            Path: The path to the user's JSON attributes file.
+        """
         normalized_user_id = normalize_user_id(user_id)
         
         if settings.CREATE_USER_SUBDIRS:
@@ -47,13 +67,13 @@ class UnifiedDataService:
     
     def load_user_data(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
-        Load user data from either Firebase or local JSON file.
+        Load stored attributes for the given user from the configured backend.
         
-        Args:
-            user_id: Unique identifier for the user
-            
+        Parameters:
+            user_id (str): Normalized user identifier used to locate the user's data.
+        
         Returns:
-            Dict containing user data if found, None otherwise
+            dict or None: User data dictionary if found, `None` otherwise.
         """
         if self.use_firebase:
             return self._load_from_firebase(user_id)
@@ -62,14 +82,14 @@ class UnifiedDataService:
     
     def save_user_data(self, user_id: str, data: Dict[str, Any]) -> bool:
         """
-        Save user data to either Firebase or local JSON file.
+        Save a user's data using the configured backend (Firebase or local JSON).
         
-        Args:
-            user_id: Unique identifier for the user
-            data: Dictionary containing user data to save
-            
+        Parameters:
+            user_id (str): Identifier of the user whose data will be stored.
+            data (Dict[str, Any]): Dictionary of user attributes to save.
+        
         Returns:
-            bool: True if successful, False otherwise
+            bool: True if the data was saved successfully, False otherwise.
         """
         if self.use_firebase:
             return self._save_to_firebase(user_id, data)
@@ -78,15 +98,15 @@ class UnifiedDataService:
     
     def update_user_image(self, user_id: str, image_hash: str, image_data: Dict[str, Any]) -> bool:
         """
-        Update or add image data for a user.
+        Attach or update metadata for a user's image, storing it under the given image hash.
         
-        Args:
-            user_id: Unique identifier for the user
-            image_hash: Unique hash for the image
-            image_data: Dictionary containing image attributes and metadata
-            
+        Parameters:
+            user_id (str): The user's identifier (normalized before use).
+            image_hash (str): The unique hash key for the image.
+            image_data (Dict[str, Any]): Image attributes and metadata to store.
+        
         Returns:
-            bool: True if successful, False otherwise
+            `true` if the image data was stored successfully, `false` otherwise.
         """
         if self.use_firebase:
             return self.firebase_service.update_user_images(user_id, image_hash, image_data)
@@ -101,11 +121,23 @@ class UnifiedDataService:
             return self.save_user_data(user_id, user_data)
     
     def _load_from_firebase(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Load user data from Firebase."""
+        """
+        Load the user data for the given user from Firebase.
+        
+        Returns:
+            dict: The user's data as a dictionary if found, `None` otherwise.
+        """
         return self.firebase_service.get_user_data(user_id)
     
     def _load_from_json(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Load user data from local JSON file."""
+        """
+        Load a user's data from a local JSON file.
+        
+        Attempts to read and parse the user's JSON file; returns the parsed dictionary on success, or `None` if the file does not exist or cannot be read or parsed.
+        
+        Returns:
+            dict: The user's stored data, or `None` if not found or on error.
+        """
         json_file_path = self.get_user_json_file_path(user_id)
         
         if not json_file_path.exists():
@@ -119,11 +151,25 @@ class UnifiedDataService:
             return None
     
     def _save_to_firebase(self, user_id: str, data: Dict[str, Any]) -> bool:
-        """Save user data to Firebase."""
+        """
+        Store the provided user data in Firebase for the specified user.
+        
+        Returns:
+            `true` if the data was stored successfully, `false` otherwise.
+        """
         return self.firebase_service.store_user_data(user_id, data)
     
     def _save_to_json(self, user_id: str, data: Dict[str, Any]) -> bool:
-        """Save user data to local JSON file."""
+        """
+        Save user data for the given user to the local JSON storage.
+        
+        Parameters:
+            user_id (str): Identifier of the user whose data will be saved.
+            data (Dict[str, Any]): Mapping of user attributes to persist.
+        
+        Returns:
+            bool: True if the file was written successfully, False otherwise.
+        """
         json_file_path = self.get_user_json_file_path(user_id)
         
         try:
@@ -141,13 +187,13 @@ class UnifiedDataService:
     
     def migrate_to_firebase(self, user_id: str) -> bool:
         """
-        Migrate user data from local JSON to Firebase.
+        Migrate a single user's data from local JSON storage into Firebase Firestore.
         
-        Args:
-            user_id: Unique identifier for the user
-            
+        Parameters:
+            user_id (str): Identifier of the user whose local data will be migrated.
+        
         Returns:
-            bool: True if successful, False otherwise
+            bool: `true` if the migration completed successfully, `false` otherwise.
         """
         if not self.firebase_service or not self.firebase_service.is_available:
             logger.warning("Firebase not available for migration")
@@ -167,13 +213,15 @@ class UnifiedDataService:
     
     def backup_from_firebase(self, user_id: str) -> bool:
         """
-        Backup user data from Firebase to local JSON.
+        Copy a user's data from Firebase into the local JSON storage.
         
-        Args:
-            user_id: Unique identifier for the user
-            
+        If Firebase is unavailable or no data exists for the user, nothing is written locally.
+        
+        Parameters:
+            user_id (str): Unique identifier of the user whose data will be backed up.
+        
         Returns:
-            bool: True if successful, False otherwise
+            `true` if the backup succeeded, `false` otherwise.
         """
         if not self.firebase_service or not self.firebase_service.is_available:
             logger.warning("Firebase not available for backup")

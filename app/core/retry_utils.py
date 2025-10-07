@@ -124,6 +124,20 @@ class RetryHandler:
         error_handler: Optional[Callable[[str, int], Any]] = None,
         context: str = "operation"
     ) -> Any:
+        """
+        Execute an operation with retry attempts using the instance's retry configuration (exponential backoff, optional jitter).
+        
+        Parameters:
+            operation (Callable[[], Any]): A zero-argument callable to execute. Its return value is returned on success.
+            error_handler (Optional[Callable[[str, int], Any]]): Optional callback invoked on failure with the error message and the attempt count (1-based for non-retryable errors, or max_retries when rate limits are exhausted). If provided, its return value will be returned instead of raising.
+            context (str): Short description of the operation used in error messages and logging.
+        
+        Returns:
+            Any: The successful result of `operation`, or the value returned by `error_handler` when provided.
+        
+        Raises:
+            RetryError: If retries are exhausted for retryable errors or a non-retryable error occurs and no `error_handler` is supplied.
+        """
         logger = get_logger(__name__)
         last_error = None
         for attempt in range(self.config.max_retries):

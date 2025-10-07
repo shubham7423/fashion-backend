@@ -29,11 +29,13 @@ class GCSService:
     
     def __init__(self, bucket_name: str, service_account_key_path: str = None):
         """
-        Initialize GCS service.
+        Create a GCSService configured for a specific bucket and optional service account key.
         
-        Args:
-            bucket_name: Name of the GCS bucket to use
-            service_account_key_path: Path to service account key file (optional)
+        Stores the provided configuration on the instance and, if Google Cloud Storage support is available, attempts to initialize the internal GCS client and bucket reference.
+        
+        Parameters:
+            bucket_name (str): Name of the target GCS bucket to operate on.
+            service_account_key_path (str, optional): Filesystem path to a service account JSON key to use for authentication; if omitted, default credentials will be used when available.
         """
         self.bucket_name = bucket_name
         self.service_account_key_path = service_account_key_path
@@ -45,7 +47,11 @@ class GCSService:
             self._initialize_gcs()
     
     def _initialize_gcs(self):
-        """Initialize Google Cloud Storage client and bucket."""
+        """
+        Initialize the Google Cloud Storage client and obtain a bucket reference for this service.
+        
+        If a valid service account key path was provided and exists, that key is used; otherwise default credentials are attempted. On success the method sets self._client and self._bucket and marks self._initialized True after verifying bucket access. On failure it logs the error and ensures self._initialized is False.
+        """
         try:
             # Initialize client with service account key if provided
             if self.service_account_key_path and os.path.exists(self.service_account_key_path):
@@ -72,7 +78,12 @@ class GCSService:
     
     @property
     def is_available(self) -> bool:
-        """Check if GCS is available and initialized."""
+        """
+        Indicates whether Google Cloud Storage bucket access is ready for operations.
+        
+        Returns:
+            `True` if the Google Cloud Storage client is available and the target bucket was successfully initialized, `False` otherwise.
+        """
         return GCS_AVAILABLE and self._initialized
     
     def upload_image(
@@ -84,17 +95,17 @@ class GCSService:
         metadata: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
         """
-        Upload a PIL Image to GCS.
+        Upload a PIL Image to the configured Google Cloud Storage bucket and return its GCS path.
         
-        Args:
-            image: PIL Image object to upload
-            blob_name: Name for the blob in GCS (including path)
-            format: Image format (JPEG, PNG, etc.)
-            quality: JPEG quality (1-100)
-            metadata: Optional metadata to attach to the blob
-            
+        Parameters:
+            image (PIL.Image.Image): Image to upload.
+            blob_name (str): Destination blob name within the bucket (may include path segments).
+            format (str): Image file format to use (e.g., "JPEG", "PNG"). Defaults to "JPEG".
+            quality (int): JPEG quality value from 1 to 100; ignored for non-JPEG formats. Defaults to 85.
+            metadata (Optional[Dict[str, str]]): Optional metadata to attach to the blob.
+        
         Returns:
-            GCS URL if successful, None otherwise
+            Optional[str]: The GCS URI (gs://bucket_name/blob_name) on success, or `None` on failure or when GCS is unavailable.
         """
         if not self.is_available:
             logger.warning("GCS not available, cannot upload image")
@@ -145,16 +156,18 @@ class GCSService:
         metadata: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
         """
-        Upload image bytes directly to GCS.
+        Upload raw image bytes to the configured Google Cloud Storage bucket as a blob.
         
-        Args:
-            image_bytes: Raw image bytes
-            blob_name: Name for the blob in GCS
-            content_type: MIME type of the image
-            metadata: Optional metadata to attach to the blob
-            
+        If provided, `metadata` is attached to the created blob.
+        
+        Parameters:
+            image_bytes (bytes): Raw image data to upload.
+            blob_name (str): Destination path/name for the blob in the bucket.
+            content_type (str): MIME type to set for the blob (e.g., "image/jpeg").
+            metadata (Optional[Dict[str, str]]): Optional key/value metadata to attach to the blob.
+        
         Returns:
-            GCS URL if successful, None otherwise
+            The GCS URL in the form `gs://{bucket}/{blob}` on success, `None` otherwise.
         """
         if not self.is_available:
             logger.warning("GCS not available, cannot upload image bytes")
@@ -179,13 +192,13 @@ class GCSService:
     
     def download_image(self, blob_name: str) -> Optional[bytes]:
         """
-        Download image bytes from GCS.
+        Download image bytes for a blob stored in Google Cloud Storage.
         
-        Args:
-            blob_name: Name of the blob in GCS
-            
+        Parameters:
+            blob_name (str): Name of the blob to retrieve.
+        
         Returns:
-            Image bytes if successful, None otherwise
+            Optional[bytes]: The blob's bytes if found and downloadable, `None` otherwise.
         """
         if not self.is_available:
             logger.warning("GCS not available, cannot download image")
@@ -208,13 +221,13 @@ class GCSService:
     
     def delete_image(self, blob_name: str) -> bool:
         """
-        Delete an image from GCS.
+        Delete an object from the configured GCS bucket.
         
-        Args:
-            blob_name: Name of the blob to delete
-            
+        Parameters:
+            blob_name (str): Path or name of the blob within the bucket to delete.
+        
         Returns:
-            True if successful, False otherwise
+            bool: `True` if the blob existed and was deleted, `False` otherwise (including when GCS is unavailable, the blob does not exist, or an error occurs).
         """
         if not self.is_available:
             logger.warning("GCS not available, cannot delete image")
@@ -237,13 +250,13 @@ class GCSService:
     
     def list_images(self, prefix: str = "") -> list:
         """
-        List images in the bucket with optional prefix filter.
+        List blob names in the configured GCS bucket, optionally filtered by a prefix.
         
-        Args:
-            prefix: Optional prefix to filter blobs
-            
+        Parameters:
+            prefix (str): Prefix to filter blob names; empty string returns all blobs.
+        
         Returns:
-            List of blob names
+            list[str]: Blob names in the bucket that match the prefix.
         """
         if not self.is_available:
             logger.warning("GCS not available, cannot list images")
@@ -261,13 +274,13 @@ class GCSService:
     
     def get_public_url(self, blob_name: str) -> Optional[str]:
         """
-        Get the public URL for a blob.
+        Get the publicly accessible URL for the named blob in the bucket.
         
-        Args:
-            blob_name: Name of the blob
-            
+        Parameters:
+            blob_name (str): Name of the blob.
+        
         Returns:
-            Public URL if blob exists, None otherwise
+            The public URL string for the blob if it exists, `None` otherwise.
         """
         if not self.is_available:
             return None
@@ -288,15 +301,15 @@ class GCSService:
         method: str = "GET"
     ) -> Optional[str]:
         """
-        Generate a signed URL for secure access to a blob.
+        Generate a V4 signed URL for accessing a blob in the configured GCS bucket.
         
-        Args:
-            blob_name: Name of the blob
-            expiration_minutes: URL expiration time in minutes
-            method: HTTP method (GET, POST, etc.)
-            
+        Parameters:
+            blob_name (str): Name of the blob object in the bucket.
+            expiration_minutes (int): Time in minutes until the signed URL expires.
+            method (str): HTTP method allowed for the signed URL (e.g., "GET", "PUT").
+        
         Returns:
-            Signed URL if successful, None otherwise
+            signed_url (str): The generated signed URL, or `None` if the service is unavailable or generation fails.
         """
         if not self.is_available:
             return None
@@ -325,7 +338,16 @@ class GCSService:
 _gcs_service = None
 
 def get_gcs_service() -> GCSService:
-    """Get the global GCS service instance."""
+    """
+    Return the module-level singleton GCSService configured from application settings.
+    
+    If no instance exists, this function constructs one using settings.GCS_BUCKET_NAME and
+    settings.GCS_SERVICE_ACCOUNT_KEY. If GCS_BUCKET_NAME is not configured, a dummy
+    GCSService (reporting not available) is created and a warning is logged.
+    
+    Returns:
+        GCSService: The global GCSService singleton instance.
+    """
     global _gcs_service
     
     if _gcs_service is None:

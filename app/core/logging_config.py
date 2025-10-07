@@ -24,6 +24,17 @@ class ColoredFormatter(logging.Formatter):
     
     def format(self, record):
         # Add color to levelname
+        """
+        Format the given LogRecord and apply ANSI color codes to its level name when a mapping exists.
+        
+        If the record's level name is present in the formatter's color map, `record.levelname` is replaced with a colorized version before delegating to the base formatter.
+        
+        Parameters:
+            record (logging.LogRecord): The log record to format.
+        
+        Returns:
+            str: The formatted log message.
+        """
         if record.levelname in self.COLORS:
             record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.COLORS['RESET']}"
         
@@ -38,17 +49,17 @@ def setup_logging(
     backup_count: int = 5
 ) -> logging.Logger:
     """
-    Set up centralized logging configuration.
+    Configure the central "fashion_backend" logger with console and optional rotating file handlers.
     
-    Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Path to log file (optional)
-        console_output: Whether to output to console
-        max_file_size: Maximum log file size in bytes
-        backup_count: Number of backup files to keep
-        
+    Parameters:
+        log_level (str): Logging level name (e.g., "DEBUG", "INFO").
+        log_file (Optional[str]): Path to a log file; when provided, a RotatingFileHandler is attached and parent directories are created.
+        console_output (bool): If True, attach a stdout StreamHandler with colored level names.
+        max_file_size (int): Maximum size in bytes before rotating the log file.
+        backup_count (int): Number of rotated backup files to keep.
+    
     Returns:
-        Configured logger instance
+        logging.Logger: The configured logger instance named "fashion_backend".
     """
     # Create logger
     logger = logging.getLogger("fashion_backend")
@@ -89,20 +100,27 @@ def setup_logging(
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Get a logger instance for a specific module.
+    Return a namespaced logger scoped under the "fashion_backend" package.
     
-    Args:
-        name: Logger name (usually __name__)
-        
+    Parameters:
+        name (str): Module-specific logger name appended to the "fashion_backend." namespace.
+    
     Returns:
-        Logger instance
+        logging.Logger: Logger instance named "fashion_backend.{name}".
     """
     return logging.getLogger(f"fashion_backend.{name}")
 
 
 # Default logger setup
 def configure_default_logging():
-    """Configure default logging for the application."""
+    """
+    Configure and return the application's default logger using settings-derived values.
+    
+    Reads LOG_LEVEL (default "INFO") and LOG_FILE (default "logs/fashion_backend.log") from the application settings, then calls setup_logging with console output enabled.
+    
+    Returns:
+        logging.Logger: A logger named "fashion_backend" configured with the resolved log level and optional rotating file handler.
+    """
     log_level = getattr(settings, 'LOG_LEVEL', 'INFO')
     log_file = getattr(settings, 'LOG_FILE', 'logs/fashion_backend.log')
     
