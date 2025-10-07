@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 
@@ -10,6 +10,7 @@ class ImageInfo(BaseModel):
     content_type: str
     file_size_bytes: int
     file_size_mb: float
+    download_url: Optional[str] = None
 
 
 class ImageAnalysisResult(BaseModel):
@@ -19,6 +20,7 @@ class ImageAnalysisResult(BaseModel):
     status: str = "ready_for_processing"
     attributes: Optional[dict] = None
     error: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class AttributeAnalysisResponse(BaseModel):
@@ -51,6 +53,7 @@ class StylerResponse(BaseModel):
     outfit_recommendation: Optional[dict] = None
     available_items_count: int
     error: Optional[str] = None
+    outfit_images: Optional[Dict[str, str]] = None  # Map of item type to download URL
 
 
 class ErrorResponse(BaseModel):

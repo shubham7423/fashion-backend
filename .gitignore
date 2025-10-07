@@ -38,6 +38,9 @@ Thumbs.db
 # Uploaded files (optional - uncomment if you don't want to track uploaded images)
 # uploaded_images/
 
+# Firebase service account key (optional - uncomment if you don't want to track your key file)
+keys/
+
 # Saved images from processing
 saved_images/
 
@@ -60,6 +63,7 @@ image_attributes.json
 # test_*.py
 
 # Logs
+logs/
 *.log
 
 # Environment variables

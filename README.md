@@ -1,190 +1,177 @@
 # Fashion Backend API
 
-A FastAPI application for processing fashion images and analyzing clothing attributes.
+A modern FastAPI backend for analyzing clothing images and generating AI-powered outfit recommendations. Supports Google Cloud Storage for image management, duplicate detection, and batch processing.
 
-## Project Structure
+---
 
+## 🚀 Features
+- **Clothing Attribute Extraction**: Upload images and extract detailed clothing attributes
+- **Outfit Recommendation**: Get AI-generated outfit suggestions based on your digital closet
+- **Cloud Storage**: Images are stored in Google Cloud Storage (GCS) for scalability
+- **Duplicate Detection**: Prevents reprocessing of the same image
+- **Batch Processing**: Analyze multiple images in a single request
+- **Comprehensive Logging**: User-specific, meaningful checkpoints for easy debugging
+
+---
+
+## 🗂️ Project Structure
 ```
 fashion-backend/
-├── app/                          # Main application package
-│   ├── __init__.py
-│   ├── main.py                   # FastAPI app factory
-│   ├── api/                      # API routes
-│   │   ├── __init__.py
-│   │   └── routes.py             # API endpoints
-│   ├── core/                     # Core configuration
-│   │   ├── __init__.py
-│   │   └── config.py             # Application settings
-│   ├── models/                   # Pydantic models
-│   │   ├── __init__.py
-│   │   └── response.py           # Response models
-│   └── services/                 # Business logic
-│       ├── __init__.py
-│       └── attribution_service.py      # Image processing service
-├── venv/                         # Virtual environment
-├── main.py                       # Application entry point
-├── requirements.txt              # Python dependencies
-├── test_api.py                   # API tests
-└── README.md                     # This file
+├── app/                  # Main application code
+│   ├── api/              # API routes
+│   ├── core/             # Config, logging, storage
+│   ├── models/           # Pydantic response models
+│   └── services/         # Business logic (attribute & styler)
+├── main.py               # App entry point
+├── requirements.txt      # Python dependencies
+├── test_gcs_integration.py # GCS integration test script
+├── tests/                # Unit, integration, and performance tests
+└── README.md             # This file
 ```
 
-## Setup
+---
 
-### 1. Virtual Environment
+## ⚙️ Setup
+
+### 1. Clone & Environment
 ```bash
-# Create virtual environment
+git clone <repo-url>
+cd fashion-backend
 python3 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # On macOS/Linux
-# or
-venv\Scripts\activate  # On Windows
-```
-
-### 2. Install Dependencies
-```bash
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running the Application
+### 2. Configure Environment
+Create a `.env` file in the root directory:
+```
+USE_GCS=true
+GCS_BUCKET_NAME="your-gcs-bucket"
+GCS_SERVICE_ACCOUNT_KEY="/path/to/key.json"
+# For AI recommendations:
+GEMINI_API_KEY="your_gemini_api_key"
+OPENAI_API_KEY="your_openai_api_key"
+```
 
-### Development Server
+---
+
+## 🏃 Running the Application
 ```bash
-# Make sure virtual environment is activated
-source venv/bin/activate
-
-# Run the FastAPI server
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+- **API Docs**: http://localhost:8000/docs
+- **Redoc**: http://localhost:8000/redoc
 
-The API will be available at:
-- **Main URL**: http://localhost:8000
-- **Interactive API Docs**: http://localhost:8000/docs
-- **Alternative API Docs**: http://localhost:8000/redoc
+---
 
-## API Endpoints
+## 📸 Attribute Extraction API
 
-### POST /api/v1/attribute_clothes
-Process uploaded image files for clothing attribute analysis. The image is automatically compressed and resized to optimal dimensions (512x512) while maintaining aspect ratio for efficient clothing recognition. Original images are processed in memory and only the compressed/processed versions are saved.
+### POST `/api/v1/attribute_clothes`
+Upload one or more images for clothing attribute analysis.
 
-**Image Processing Features:**
-- **Automatic compression**: Images are resized to 512x512 pixels (maintaining aspect ratio)
-- **High-quality resampling**: Uses LANCZOS algorithm for optimal quality
-- **Format optimization**: JPEG quality set to 85% for balanced size/quality
-- **Orientation correction**: Automatically fixes image rotation based on EXIF data
-- **Smart storage**: Only processed/compressed images are saved, originals are discarded
-- **Memory efficiency**: Original images processed in-memory without permanent storage
+**Request:**
+- `multipart/form-data` with one or more `files` fields
 
-**Parameters:**
-- `file`: Image file (multipart/form-data)
-
-**Supported formats:**
-- JPG/JPEG
-- PNG
-- GIF
-- BMP
-- WebP
-
-**Max file size:** 10MB (original file)
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Image processed, compressed, and ready for attribute analysis",
-  "image_info": {
-    "filename": "example.jpg",
-    "content_type": "image/jpeg",
-    "file_size_bytes": 245760,
-    "file_size_mb": 0.23
-  },
-  "processing_timestamp": "2025-09-30T14:30:22.123456",
-  "status": "processed_and_ready",
-  "attributes": null
-}
-```
-
-### GET /
-Returns basic API information.
-
-### GET /api/v1/health
-Health check endpoint.
-
-## Usage Examples
-
-### Using cURL
+**Example cURL:**
 ```bash
-# Process an image for attribute analysis
 curl -X POST "http://localhost:8000/api/v1/attribute_clothes" \
   -H "accept: application/json" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@path/to/your/image.jpg"
+  -F "files=@image1.jpg" -F "files=@image2.png"
 ```
 
-### Using Python requests
-```python
-import requests
-
-url = "http://localhost:8000/api/v1/attribute_clothes"
-files = {"file": open("path/to/your/image.jpg", "rb")}
-response = requests.post(url, files=files)
-print(response.json())
+**Response Example:**
+```json
+{
+  "success": true,
+  "message": "2 of 2 images processed successfully",
+  "processing_timestamp": "2025-09-30T18:01:53.123456",
+  "results": [
+    {
+      "image_info": {"filename": "shirt.jpg", ...},
+      "status": "attributes_extracted",
+      "attributes": {"category": "T-Shirt", ...},
+      "error": null
+    }
+  ]
+}
 ```
 
-## Image Processing
+---
 
-- **Automatic compression and resizing**: Images are optimized to 512x512 pixels for efficient processing
-- **Aspect ratio preservation**: Original proportions are maintained during resizing
-- **High-quality processing**: Uses LANCZOS resampling for superior image quality
-- **Smart storage**: Only processed/compressed images are saved, originals are discarded after processing
-- **Format validation**: Each image is validated for type and size before processing
-- **EXIF orientation handling**: Automatically corrects image rotation
-- **Optimal for clothing recognition**: Resolution balanced for material and texture identification
-- **Ready for ML integration**: Processed images are optimized for clothing attribute analysis models
+## 👗 Styler API (Outfit Recommendation)
 
-## Configuration
+### POST `/api/v1/styler`
+Get outfit recommendations based on your uploaded clothing images.
 
-The application can be configured through environment variables or by modifying `app/core/config.py`:
+**Request:**
+- `application/x-www-form-urlencoded` or query params
+- Required: `user_id`
+- Optional: `city`, `weather`, `occasion`
 
-```python
-# Image processing settings
-TARGET_WIDTH: int = 512           # Target width for clothing recognition
-TARGET_HEIGHT: int = 512          # Target height for clothing recognition  
-JPEG_QUALITY: int = 85           # JPEG compression quality (1-100)
-MAINTAIN_ASPECT_RATIO: bool = True # Keep original aspect ratio when resizing
-MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB max upload size
+**Example cURL:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/styler" \
+  -H "accept: application/json" \
+  -d "user_id=john_doe&city=Toronto&weather=fall&occasion=casual"
 ```
 
-## Project Structure
-```
-fashion-backend/
-├── app/                          # Main application package
-│   ├── __init__.py
-│   ├── main.py                   # FastAPI app factory
-│   ├── api/                      # API routes
-│   │   ├── __init__.py
-│   │   └── routes.py             # API endpoints
-│   ├── core/                     # Core configuration
-│   │   ├── __init__.py
-│   │   └── config.py             # Application settings
-│   ├── models/                   # Pydantic models
-│   │   ├── __init__.py
-│   │   └── response.py           # Response models
-│   └── services/                 # Business logic
-│       ├── __init__.py
-│       └── attribution_service.py      # Image processing service
-├── venv/                         # Virtual environment
-├── main.py                       # Application entry point
-├── requirements.txt              # Python dependencies
-├── test_api.py                   # API tests
-└── README.md                     # This file
+**Response Example:**
+```json
+{
+  "success": true,
+  "message": "Outfit recommendation generated successfully for user 'john_doe'",
+  "user_id": "john_doe",
+  "styling_timestamp": "2025-09-30T18:45:22.123456",
+  "request_parameters": {"city": "Toronto", ...},
+  "outfit_recommendation": {
+    "top": "navy_blazer_formal.jpg",
+    "bottom": "charcoal_trousers_slim.jpg",
+    "outerwear": "wool_coat_navy.jpg",
+    ...
+  },
+  "outfit_images": {
+    "top": "https://storage.googleapis.com/your-gcs-bucket/user_id/processed/navy_blazer_formal.jpg",
+    "bottom": "https://storage.googleapis.com/your-gcs-bucket/user_id/processed/charcoal_trousers_slim.jpg",
+    "outerwear": "https://storage.googleapis.com/your-gcs-bucket/user_id/processed/wool_coat_navy.jpg"
+  },
+  "available_items_count": 15,
+  "error": null
+}
 ```
 
-## Next Steps
+---
 
-The processed images can be enhanced with:
-1. Adding ML models for clothing attribute detection
-2. Implementing color and pattern recognition
-3. Adding style classification capabilities
-4. Creating batch processing workflows
-5. Adding real-time image analysis features
+## 🧪 Testing
+
+### Run All Tests
+```bash
+python run_tests.py
+```
+
+### Run Unit/Integration/Performance Tests
+```bash
+pytest tests/unit/ -v
+pytest tests/integration/ -v
+pytest tests/performance/ -v
+```
+
+---
+
+## 📝 Tips & Best Practices
+- **Upload diverse clothing** for better outfit recommendations
+- **Use clear user IDs** to keep your digital closet organized
+- **Check logs** for user-specific processing and debugging
+- **API keys**: Ensure your Gemini/OpenAI keys are set for AI-powered styling
+
+---
+
+## 💡 Next Steps
+- Add more images to your closet for richer recommendations
+- Experiment with different weather/occasion parameters
+- Integrate with a frontend for a complete fashion assistant experience
+
+---
+
+## 📬 Support
+For issues or feature requests, please open a GitHub issue.

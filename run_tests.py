@@ -8,34 +8,38 @@ Supports running different categories of tests with various options.
 import subprocess
 import sys
 import argparse
+import logging
 from pathlib import Path
+
+# Setup basic logging for the test runner
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 def run_pytest(args_list, description="Running tests"):
     """Run pytest with given arguments."""
-    print(f"{description}")
-    print("=" * 50)
-
+    logger.info(f"Starting: {description}")
     try:
         result = subprocess.run(
             [sys.executable, "-m", "pytest"] + args_list,
             cwd=Path(__file__).parent,
             capture_output=False,
         )
-        
         if result.returncode == 0:
-            print(f"\n✅ {description} completed successfully!")
+            logger.info(f"✅ {description} completed successfully!")
         else:
-            print(f"\n❌ {description} failed with return code: {result.returncode}")
-        
+            logger.error(f"❌ {description} failed with return code: {result.returncode}")
         return result.returncode
-
     except FileNotFoundError:
-        print("❌ pytest not found. Please install it first:")
-        print("   pip install pytest pytest-asyncio pytest-cov pytest-mock")
+        logger.error("❌ pytest not found. Please install it first:")
+        logger.error("   pip install pytest pytest-asyncio pytest-cov pytest-mock")
         return 1
     except Exception as e:
-        print(f"❌ Error running tests: {e}")
+        logger.error(f"❌ Error running tests: {e}")
         return 1
 
 
@@ -149,9 +153,10 @@ def main():
         pytest_args.extend(["-k", args.pattern])
         description = f"Tests matching '{args.pattern}'"
     else:
-        # Run all tests by default, but exclude slow ones unless explicitly requested
         pytest_args.extend(["-m", "not slow", "tests/"])
         description = "All tests (excluding slow tests)"
+    
+    logger.info(f"Selected test category: {description}")
     
     # Coverage options
     if args.coverage or args.coverage_html:

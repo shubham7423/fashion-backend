@@ -1,13 +1,14 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from app.services.attribution_service import ClothingAttributionService
 from app.services.styler_service import StylerService
+from app.core.image_storage_service import get_image_storage_service
 from app.models.response import (
     AttributeAnalysisResponse,
     HealthResponse,
     StylerResponse,
 )
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Any
 
 router = APIRouter()
 
@@ -16,6 +17,13 @@ router = APIRouter()
 async def health_check():
     """Health check endpoint"""
     return HealthResponse(status="healthy", timestamp=datetime.now().isoformat())
+
+
+@router.get("/storage-info")
+async def storage_info() -> Dict[str, Any]:
+    """Get information about the current storage configuration"""
+    image_storage = get_image_storage_service()
+    return image_storage.get_storage_info()
 
 
 @router.post("/attribute_clothes", response_model=AttributeAnalysisResponse)
